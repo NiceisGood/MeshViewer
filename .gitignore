@@ -1,0 +1,22 @@
+# Build artifacts
+build/
+lib/
+
+# Compiled binaries
+*.exe
+*.dll
+*.lib
+*.dll.a
+
+# Visualisation output & mesh exports
+*.obj
+
+# IDE / editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+Thumbs.db
+.DS_Store
