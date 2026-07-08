@@ -36,7 +36,7 @@ int main() {
         print_stats(stats);
     }
 
-    // ---- Test 2: AFT statistics ----
+    // ---- Test 2: AFT square with quality improvement ----
     {
         std::cout << "\n[Test 2] AdvancingFront2D — square 2×2, target=0.02\n";
         auto boundary = rect_boundary(0.0, 0.0, 2.0, 2.0);
@@ -48,18 +48,29 @@ int main() {
         AdvancingFront2D mesh(boundary, cfg);
         mesh.generate();
 
-        auto stats = compute_stats(mesh.points(), mesh.triangles());
-        print_stats(stats);
+        auto pts = mesh.points();
+        auto tris = mesh.triangles();
 
-        // Export coloured OBJ
+        std::cout << "  Before improvement:\n";
+        auto stats_before = compute_stats(pts, tris);
+        print_stats(stats_before);
+
+        int nflip = improve_quality(pts, tris);
+        std::cout << "  Flips: " << nflip << "\n";
+
+        std::cout << "  After improvement:\n";
+        auto stats_after = compute_stats(pts, tris);
+        print_stats(stats_after);
+
+        // Export coloured OBJ (after improvement)
         std::string obj_path = "test_aft2d_square.obj";
-        if (write_obj_coloured(mesh.points(), mesh.triangles(), obj_path))
+        if (write_obj_coloured(pts, tris, obj_path))
             std::cout << "  → Exported " << obj_path << "\n";
     }
 
-    // ---- Test 3: OBJ export — L-shape AFT ----
+    // ---- Test 3: AFT L-shape with quality improvement ----
     {
-        std::cout << "\n[Test 3] AFT L-shape OBJ export\n";
+        std::cout << "\n[Test 3] AFT L-shape, target=0.04\n";
         std::vector<Point2D> boundary = {
             {0.0, 0.0}, {2.0, 0.0}, {2.0, 0.5},
             {0.5, 0.5}, {0.5, 2.0}, {0.0, 2.0}
@@ -72,11 +83,20 @@ int main() {
         AdvancingFront2D mesh(boundary, cfg);
         mesh.generate();
 
-        auto stats = compute_stats(mesh.points(), mesh.triangles());
-        print_stats(stats);
+        auto pts = mesh.points();
+        auto tris = mesh.triangles();
+
+        std::cout << "  Before:\n";
+        print_stats(compute_stats(pts, tris));
+
+        int nflip = improve_quality(pts, tris);
+        std::cout << "  Flips: " << nflip << "\n";
+
+        std::cout << "  After:\n";
+        print_stats(compute_stats(pts, tris));
 
         std::string obj_path = "test_aft2d_lshape.obj";
-        if (write_obj(mesh.points(), mesh.triangles(), obj_path))
+        if (write_obj(pts, tris, obj_path))
             std::cout << "  → Exported " << obj_path << "\n";
     }
 

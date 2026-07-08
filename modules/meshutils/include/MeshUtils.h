@@ -229,4 +229,132 @@ inline bool write_obj_coloured(const std::vector<Point2D>& pts,
     return true;
 }
 
+// -----------------------------------------------------------------------
+//  Mesh quality improvement via edge flipping
+// -----------------------------------------------------------------------
+
+/// Flip-improve mesh quality: iteratively flip interior edges that
+/// improve the local minimum angle.  Returns the number of flips performed.
+inline int improve_quality(std::vector<Point2D>& pts,
+                            std::vector<Triangle2D>& tris,
+                            int max_passes = 20)
+{
+    int nt = static_cast<int>(tris.size());
+    if (nt < 2) return 0;
+
+    auto orient = [&](int a, int b, int c) -> double {
+        return (pts[b].x - pts[a].x) * (pts[c].y - pts[a].y) -
+               (pts[b].y - pts[a].y) * (pts[c].x - pts[a].x);
+    };
+
+    auto sqlen = [&](int a, int b) -> double {
+        double dx = pts[b].x - pts[a].x, dy = pts[b].y - pts[a].y;
+        return dx*dx + dy*dy;
+    };
+
+    auto angle_deg = [&](int a, int b, int c) -> double {
+        // Angle at vertex 'a' of triangle (a,b,c)
+        double a2 = sqlen(b, c);  // side opposite a
+        double b2 = sqlen(c, a);  // side opposite b — adj to a via b
+        double c2 = sqlen(a, b);  // side opposite c — adj to a via c
+        double val = (b2 + c2 - a2) / (2.0 * std::sqrt(b2 * c2));
+        if (val >  1.0) val =  1.0;
+        if (val < -1.0) val = -1.0;
+        return std::acos(val) * 57.29577951308232;
+    };
+
+    auto edge_key = [](int a, int b) -> size_t {
+        int mn = std::min(a, b), mx = std::max(a, b);
+        return static_cast<size_t>(mn) ^ (static_cast<size_t>(mx) << 16);
+    };
+
+    int total_flips = 0;
+
+    for (int pass = 0; pass < max_passes; ++pass) {
+        // Build edge info: map each undirected edge to the triangles using it
+        struct EdgeRec { size_t key; int a, b; int ti; int opp; };
+        std::vector<EdgeRec> recs;
+        recs.reserve(nt * 3);
+        for (int ti = 0; ti < nt; ++ti) {
+            const auto& t = tris[ti];
+            recs.push_back({edge_key(t.v0, t.v1), t.v0, t.v1, ti, t.v2});
+            recs.push_back({edge_key(t.v1, t.v2), t.v1, t.v2, ti, t.v0});
+            recs.push_back({edge_key(t.v2, t.v0), t.v2, t.v0, ti, t.v1});
+        }
+
+        std::sort(recs.begin(), recs.end(),
+                  [](const EdgeRec& e, const EdgeRec& f) { return e.key < f.key; });
+
+        // Track triangles modified this pass to avoid re-flipping
+        std::vector<bool> dirty(nt, false);
+        int flips = 0;
+
+        for (size_t i = 0; i + 1 < recs.size(); ++i) {
+            if (recs[i].key != recs[i + 1].key) continue;
+
+            const auto& r1 = recs[i];
+            const auto& r2 = recs[i + 1];
+
+            int ti_a = r1.ti, ti_b = r2.ti;
+            if (dirty[ti_a] || dirty[ti_b]) continue;
+
+            const auto& ta = tris[ti_a];
+            const auto& tb = tris[ti_b];
+
+            int p = r1.a, q = r1.b;
+            int r = r1.opp;  // opposite in first triangle
+            int s = r2.opp;  // opposite in second triangle
+
+            // Check quadrilateral convexity: orient(p,r,q) and orient(p,q,s)
+            // should have the same sign
+            double or1 = orient(p, r, q);
+            double or2 = orient(p, q, s);
+            if (or1 * or2 <= 0) continue;
+
+            // Current min angle (6 angles)
+            double cur[6] = {
+                angle_deg(ta.v0, ta.v1, ta.v2),
+                angle_deg(ta.v1, ta.v2, ta.v0),
+                angle_deg(ta.v2, ta.v0, ta.v1),
+                angle_deg(tb.v0, tb.v1, tb.v2),
+                angle_deg(tb.v1, tb.v2, tb.v0),
+                angle_deg(tb.v2, tb.v0, tb.v1)
+            };
+            double cur_min = *std::min_element(cur, cur + 6);
+
+            // Proposed flipped triangles: (p, r, s) and (q, s, r)
+            double o_new1 = orient(p, r, s);
+            double o_new2 = orient(q, s, r);
+            if (o_new1 <= 0 || o_new2 <= 0) continue;
+
+            double new6[6] = {
+                angle_deg(p, r, s),
+                angle_deg(r, s, p),
+                angle_deg(s, p, r),
+                angle_deg(q, s, r),
+                angle_deg(s, r, q),
+                angle_deg(r, q, s)
+            };
+            double new_min = *std::min_element(new6, new6 + 6);
+
+            if (new_min > cur_min + 0.1) {
+                tris[ti_a] = {p, r, s};
+                tris[ti_b] = {q, s, r};
+                // Fix orientation
+                if (orient(tris[ti_a].v0, tris[ti_a].v1, tris[ti_a].v2) < 0)
+                    std::swap(tris[ti_a].v1, tris[ti_a].v2);
+                if (orient(tris[ti_b].v0, tris[ti_b].v1, tris[ti_b].v2) < 0)
+                    std::swap(tris[ti_b].v1, tris[ti_b].v2);
+                dirty[ti_a] = dirty[ti_b] = true;
+                ++flips;
+                ++total_flips;
+            }
+        }
+
+        if (flips == 0) break;
+    }
+
+    return total_flips;
+}
+
 #endif // MESHUTILS_H
