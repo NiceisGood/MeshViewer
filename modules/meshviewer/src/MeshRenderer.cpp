@@ -18,11 +18,11 @@ MeshRenderer::MeshRenderer(QWidget* parent)
 MeshRenderer::~MeshRenderer()
 {
     makeCurrent();
-    vao_.destroy();
-    wireframe_vao_.destroy();
-    vbo_.destroy();
-    ebo_.destroy();
-    wireframe_ebo_.destroy();
+    if (vao_) glDeleteVertexArrays(1, &vao_);
+    if (wireframe_vao_) glDeleteVertexArrays(1, &wireframe_vao_);
+    if (vbo_) glDeleteBuffers(1, &vbo_);
+    if (ebo_) glDeleteBuffers(1, &ebo_);
+    if (wireframe_ebo_) glDeleteBuffers(1, &wireframe_ebo_);
     delete shader_;
     delete wire_shader_;
     doneCurrent();
@@ -77,11 +77,11 @@ void MeshRenderer::initializeGL()
 
     setupShaders();
 
-    vao_.create();
-    wireframe_vao_.create();
-    vbo_.create();
-    ebo_.create();
-    wireframe_ebo_.create();
+    glGenVertexArrays(1, &vao_);
+    glGenVertexArrays(1, &wireframe_vao_);
+    glGenBuffers(1, &vbo_);
+    glGenBuffers(1, &ebo_);
+    glGenBuffers(1, &wireframe_ebo_);
 
     if (!mesh_.empty())
         buildBuffers();
@@ -170,18 +170,20 @@ void MeshRenderer::buildBuffers()
     if (mesh_.empty()) return;
 
     // --- Solid mesh VAO ---
-    vao_.bind();
-    vbo_.bind();
-    vbo_.allocate(mesh_.vertices.data(),
-                  mesh_.vertices.size() * sizeof(float));
+    glBindVertexArray(vao_);
+    glBindBuffer(GL_ARRAY_BUFFER, vbo_);
+    glBufferData(GL_ARRAY_BUFFER,
+                 mesh_.vertices.size() * sizeof(float),
+                 mesh_.vertices.data(), GL_STATIC_DRAW);
 
-    ebo_.bind();
-    ebo_.allocate(mesh_.indices.data(),
-                  mesh_.indices.size() * sizeof(unsigned int));
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo_);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER,
+                 mesh_.indices.size() * sizeof(unsigned int),
+                 mesh_.indices.data(), GL_STATIC_DRAW);
 
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), nullptr);
     glEnableVertexAttribArray(0);
-    vao_.release();
+    glBindVertexArray(0);
 
     // --- Wireframe VAO (line segments) ---
     // Build line list from triangle indices (3 edges per triangle)
@@ -199,15 +201,16 @@ void MeshRenderer::buildBuffers()
         line_indices.push_back(i0);
     }
 
-    wireframe_vao_.bind();
-    vbo_.bind();  // share vertex buffer
-    wireframe_ebo_.bind();
-    wireframe_ebo_.allocate(line_indices.data(),
-                            line_indices.size() * sizeof(unsigned int));
+    glBindVertexArray(wireframe_vao_);
+    glBindBuffer(GL_ARRAY_BUFFER, vbo_);  // share vertex buffer
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, wireframe_ebo_);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER,
+                 line_indices.size() * sizeof(unsigned int),
+                 line_indices.data(), GL_STATIC_DRAW);
 
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), nullptr);
     glEnableVertexAttribArray(0);
-    wireframe_vao_.release();
+    glBindVertexArray(0);
 }
 
 // =======================================================================
@@ -329,20 +332,25 @@ void MeshRenderer::paintGL()
 
     QMatrix4x4 mvp = projection_ * view_ * model_;
 
-    // --- Solid fill ---
-    shader_->bind();
-    shader_->setUniformValue("uMVP", mvp);
-    shader_->setUniformValue("uColor", QVector3D(0.65f, 0.65f, 0.75f));
+    const bool draw_solid = (display_mode_ == Solid || display_mode_ == WireframeSolid);
+    const bool draw_wire = (display_mode_ == Wireframe || display_mode_ == WireframeSolid);
 
-    vao_.bind();
-    glDrawElements(GL_TRIANGLES,
-                   static_cast<int>(mesh_.indices.size()),
-                   GL_UNSIGNED_INT, nullptr);
-    vao_.release();
-    shader_->release();
+    // --- Solid fill ---
+    if (draw_solid) {
+        shader_->bind();
+        shader_->setUniformValue("uMVP", mvp);
+        shader_->setUniformValue("uColor", QVector3D(0.65f, 0.65f, 0.75f));
+
+        glBindVertexArray(vao_);
+        glDrawElements(GL_TRIANGLES,
+                       static_cast<int>(mesh_.indices.size()),
+                       GL_UNSIGNED_INT, nullptr);
+        glBindVertexArray(0);
+        shader_->release();
+    }
 
     // --- Wireframe overlay ---
-    if (wireframe_) {
+    if (draw_wire) {
         glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
         glEnable(GL_POLYGON_OFFSET_LINE);
         glPolygonOffset(-1.0f, -1.0f);
@@ -352,11 +360,11 @@ void MeshRenderer::paintGL()
         wire_shader_->setUniformValue("uMVP", mvp);
         wire_shader_->setUniformValue("uColor", QVector3D(0.2f, 0.6f, 1.0f));
 
-        wireframe_vao_.bind();
+        glBindVertexArray(wireframe_vao_);
         glDrawElements(GL_LINES,
                        static_cast<int>(mesh_.indices.size() * 2),
                        GL_UNSIGNED_INT, nullptr);
-        wireframe_vao_.release();
+        glBindVertexArray(0);
         wire_shader_->release();
 
         glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);

@@ -3,7 +3,7 @@
 
 #include <QMainWindow>
 #include <QLabel>
-#include <QCheckBox>
+#include <QActionGroup>
 
 class MeshRenderer;
 
@@ -26,6 +26,7 @@ public:
 private slots:
     void onOpenFile();
     void onMeshInfoChanged(const QString& info);
+    void onDisplayModeChanged(QAction* action);
 
 private:
     void createMenus();
@@ -33,6 +34,7 @@ private:
 
     MeshRenderer* renderer_;
     QLabel* info_label_;
+    QActionGroup* display_group_ = nullptr;
 };
 
 #endif // MESHVIEWER_H

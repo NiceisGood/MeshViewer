@@ -74,11 +74,35 @@ void MeshViewer::createMenus()
     // ── View menu ──
     QMenu* view_menu = menuBar()->addMenu(QStringLiteral("&View"));
 
-    QAction* wire_act = view_menu->addAction(QStringLiteral("&Wireframe"));
+    // Display mode submenu
+    QMenu* display_menu = view_menu->addMenu(QStringLiteral("&Display Mode"));
+
+    display_group_ = new QActionGroup(this);
+    display_group_->setExclusive(true);
+
+    QAction* solid_act = display_menu->addAction(QStringLiteral("&Solid"));
+    solid_act->setCheckable(true);
+    solid_act->setChecked(true);
+    solid_act->setData(static_cast<int>(MeshRenderer::Solid));
+    solid_act->setShortcut(QKeySequence(Qt::Key_1));
+    display_group_->addAction(solid_act);
+
+    QAction* wire_act = display_menu->addAction(QStringLiteral("&Wireframe"));
     wire_act->setCheckable(true);
     wire_act->setChecked(false);
-    wire_act->setShortcut(QKeySequence(Qt::Key_W));
-    connect(wire_act, &QAction::toggled, renderer_, &MeshRenderer::setWireframe);
+    wire_act->setData(static_cast<int>(MeshRenderer::Wireframe));
+    wire_act->setShortcut(QKeySequence(Qt::Key_2));
+    display_group_->addAction(wire_act);
+
+    QAction* both_act = display_menu->addAction(QStringLiteral("Wireframe && &Solid"));
+    both_act->setCheckable(true);
+    both_act->setChecked(false);
+    both_act->setData(static_cast<int>(MeshRenderer::WireframeSolid));
+    both_act->setShortcut(QKeySequence(Qt::Key_3));
+    display_group_->addAction(both_act);
+
+    connect(display_group_, &QActionGroup::triggered,
+            this, &MeshViewer::onDisplayModeChanged);
 
     view_menu->addSeparator();
 
@@ -126,4 +150,11 @@ void MeshViewer::onOpenFile()
 void MeshViewer::onMeshInfoChanged(const QString& info)
 {
     info_label_->setText(info);
+}
+
+void MeshViewer::onDisplayModeChanged(QAction* action)
+{
+    if (!action) return;
+    auto mode = static_cast<MeshRenderer::DisplayMode>(action->data().toInt());
+    renderer_->setDisplayMode(mode);
 }

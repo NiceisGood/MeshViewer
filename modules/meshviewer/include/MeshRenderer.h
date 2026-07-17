@@ -3,8 +3,6 @@
 
 #include <QOpenGLWidget>
 #include <QOpenGLFunctions_3_3_Core>
-#include <QOpenGLVertexArrayObject>
-#include <QOpenGLBuffer>
 #include <QOpenGLShaderProgram>
 #include <QMatrix4x4>
 #include <QMouseEvent>
@@ -12,6 +10,8 @@
 #include <QVector3D>
 
 #include "MeshReader.h"
+
+#include <vector>
 
 // -----------------------------------------------------------------------
 // MeshRenderer — QOpenGLWidget for 3D mesh display with arcball camera.
@@ -22,6 +22,14 @@ class MeshRenderer : public QOpenGLWidget, protected QOpenGLFunctions_3_3_Core
     Q_OBJECT
 
 public:
+    /// Display mode enumeration.
+    enum DisplayMode {
+        Solid = 0,          ///< Solid fill only (default).
+        Wireframe,          ///< Wireframe only.
+        WireframeSolid      ///< Solid fill + wireframe overlay.
+    };
+    Q_ENUM(DisplayMode)
+
     explicit MeshRenderer(QWidget* parent = nullptr);
     ~MeshRenderer();
 
@@ -31,9 +39,9 @@ public:
     /// Clear the current mesh.
     void clearMesh();
 
-    /// Toggle wireframe overlay.
-    void setWireframe(bool on) { wireframe_ = on; update(); }
-    bool wireframe() const { return wireframe_; }
+    /// Set display mode.
+    void setDisplayMode(DisplayMode mode) { display_mode_ = mode; update(); }
+    DisplayMode displayMode() const { return display_mode_; }
 
     /// Get the current mesh info string.
     QString meshInfo() const;
@@ -61,12 +69,12 @@ private:
     // Mesh data
     MeshData mesh_;
 
-    // OpenGL resources
-    QOpenGLVertexArrayObject vao_;
-    QOpenGLVertexArrayObject wireframe_vao_;
-    QOpenGLBuffer vbo_;
-    QOpenGLBuffer ebo_;
-    QOpenGLBuffer wireframe_ebo_;
+    // OpenGL resources — raw GLuint for core profile
+    GLuint vao_ = 0;
+    GLuint wireframe_vao_ = 0;
+    GLuint vbo_ = 0;
+    GLuint ebo_ = 0;
+    GLuint wireframe_ebo_ = 0;
     QOpenGLShaderProgram* shader_ = nullptr;
     QOpenGLShaderProgram* wire_shader_ = nullptr;
 
@@ -85,7 +93,7 @@ private:
     float prev_quat_[4] = {1.0f, 0.0f, 0.0f, 0.0f};
 
     // Display settings
-    bool wireframe_ = false;
+    DisplayMode display_mode_ = Solid;
     bool initialized_ = false;
 };
 
