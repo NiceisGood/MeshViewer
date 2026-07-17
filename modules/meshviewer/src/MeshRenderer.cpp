@@ -36,6 +36,9 @@ void MeshRenderer::loadMesh(const MeshData& mesh)
 {
     mesh_ = mesh;
     if (initialized_) {
+        makeCurrent();
+        buildBuffers();
+        doneCurrent();
         update();
     }
     emit meshInfoChanged(meshInfo());
