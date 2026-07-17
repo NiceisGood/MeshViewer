@@ -36,7 +36,6 @@ void MeshRenderer::loadMesh(const MeshData& mesh)
 {
     mesh_ = mesh;
     if (initialized_) {
-        buildBuffers();
         update();
     }
     emit meshInfoChanged(meshInfo());
@@ -46,7 +45,9 @@ void MeshRenderer::clearMesh()
 {
     mesh_.clear();
     if (initialized_) {
+        makeCurrent();
         buildBuffers();
+        doneCurrent();
         update();
     }
     emit meshInfoChanged(meshInfo());

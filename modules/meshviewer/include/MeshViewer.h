@@ -19,6 +19,10 @@ public:
     explicit MeshViewer(QWidget* parent = nullptr);
     ~MeshViewer();
 
+    /// Load a mesh file by path (supports .stl, .obj, .qmesh, .qmesh3d).
+    /// Returns true on success.
+    bool loadFile(const std::string& path);
+
 private slots:
     void onOpenFile();
     void onMeshInfoChanged(const QString& info);

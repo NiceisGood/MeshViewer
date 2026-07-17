@@ -2,7 +2,7 @@
 # Qt5 + OpenGL mesh viewer application
 # Requires: Qt5 (Widgets + OpenGL modules)
 
-set(QT_PATH "/d/Qt/Qt5.14.2/5.14.2/mingw73_64")
+set(QT_PATH "/d/Qt/Qt5.14.2/5.14.2/msvc2017_64")
 set(CMAKE_PREFIX_PATH "${QT_PATH}")
 set(CMAKE_AUTOMOC ON)
 

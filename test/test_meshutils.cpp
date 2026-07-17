@@ -63,7 +63,7 @@ int main() {
         print_stats(stats_after);
 
         // Export coloured OBJ (after improvement)
-        std::string obj_path = "test_aft2d_square.obj";
+        std::string obj_path = "data/test_aft2d_square.obj";
         if (write_obj_coloured(pts, tris, obj_path))
             std::cout << "  → Exported " << obj_path << "\n";
     }
@@ -95,7 +95,7 @@ int main() {
         std::cout << "  After:\n";
         print_stats(compute_stats(pts, tris));
 
-        std::string obj_path = "test_aft2d_lshape.obj";
+        std::string obj_path = "data/test_aft2d_lshape.obj";
         if (write_obj(pts, tris, obj_path))
             std::cout << "  → Exported " << obj_path << "\n";
     }

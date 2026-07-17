@@ -38,6 +38,21 @@ MeshViewer::MeshViewer(QWidget* parent)
 MeshViewer::~MeshViewer() = default;
 
 // =======================================================================
+//  Load a mesh file by path
+// =======================================================================
+
+bool MeshViewer::loadFile(const std::string& path)
+{
+    MeshData mesh;
+    if (!read_mesh(path, mesh))
+        return false;
+    renderer_->loadMesh(mesh);
+    statusBar()->showMessage(
+        QStringLiteral("Loaded: %1").arg(QString::fromStdString(path)), 5000);
+    return true;
+}
+
+// =======================================================================
 //  Menus
 // =======================================================================
 
@@ -91,7 +106,7 @@ void MeshViewer::onOpenFile()
         this,
         QStringLiteral("Open Mesh File"),
         QString(),
-        QStringLiteral("Mesh Files (*.stl *.obj);;STL Files (*.stl);;OBJ Files (*.obj);;All Files (*)")
+        QStringLiteral("Mesh Files (*.stl *.obj *.qmesh *.qmesh3d);;STL Files (*.stl);;OBJ Files (*.obj);;QMesh Files (*.qmesh *.qmesh3d);;All Files (*)")
     );
 
     if (path.isEmpty()) return;
