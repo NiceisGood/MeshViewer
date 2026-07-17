@@ -15,3 +15,6 @@ target_link_libraries(test_aft2d PRIVATE aft2d)
 
 add_executable(test_meshutils test_meshutils.cpp)
 target_link_libraries(test_meshutils PRIVATE aft2d meshutils)
+
+add_executable(test_quadtree test_quadtree.cpp)
+target_link_libraries(test_quadtree PRIVATE quadtree)
