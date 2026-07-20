@@ -356,11 +356,15 @@ namespace detail {
 /// Extract surface triangles from a tetrahedral mesh.
 /// Returns pairs of (face_triangle, original_tetra_index).
 /// Each boundary face appears exactly once.
+/// Triangles are emitted with consistent winding (outward-facing for
+/// positively-oriented tetrahedra), using the original vertex order
+/// from the tetrahedron rather than a sorted index order.
 inline std::vector<Triangle2D> extract_surface(
     const std::vector<Tetrahedron>& tets)
 {
     struct FaceKey {
-        int v[3];
+        int v[3];      // sorted indices (for deduplication)
+        int orig[3];   // original vertex order (for consistent winding)
         int tet_idx;
         bool operator<(const FaceKey& o) const {
             for (int i = 0; i < 3; ++i)
@@ -370,19 +374,21 @@ inline std::vector<Triangle2D> extract_surface(
     };
 
     auto make_key = [](int a, int b, int c, int ti) -> FaceKey {
+        int orig[3] = {a, b, c};
         int v[3] = {a, b, c};
         std::sort(v, v + 3);
-        return {v[0], v[1], v[2], ti};
+        return {{v[0], v[1], v[2]}, {orig[0], orig[1], orig[2]}, ti};
     };
 
     std::vector<FaceKey> faces;
     for (size_t ti = 0; ti < tets.size(); ++ti) {
         const auto& t = tets[ti];
-        // 4 faces of a tetrahedron
-        faces.push_back(make_key(t.v0, t.v2, t.v1, static_cast<int>(ti)));
-        faces.push_back(make_key(t.v0, t.v1, t.v3, static_cast<int>(ti)));
-        faces.push_back(make_key(t.v1, t.v2, t.v3, static_cast<int>(ti)));
-        faces.push_back(make_key(t.v0, t.v3, t.v2, static_cast<int>(ti)));
+        // 4 faces of a tetrahedron, stored with original winding
+        // for consistent outward-facing surface normals.
+        faces.push_back(make_key(t.v0, t.v2, t.v1, static_cast<int>(ti)));  // opposite v3
+        faces.push_back(make_key(t.v0, t.v1, t.v3, static_cast<int>(ti)));  // opposite v2
+        faces.push_back(make_key(t.v1, t.v2, t.v3, static_cast<int>(ti)));  // opposite v0
+        faces.push_back(make_key(t.v0, t.v3, t.v2, static_cast<int>(ti)));  // opposite v1
     }
 
     std::sort(faces.begin(), faces.end());
@@ -408,7 +414,9 @@ inline std::vector<Triangle2D> extract_surface(
             }
         }
         if (unique) {
-            surface.push_back({faces[i].v[0], faces[i].v[1], faces[i].v[2]});
+            // Use the ORIGINAL vertex order (not sorted) to preserve
+            // consistent winding direction from the tetrahedron.
+            surface.push_back({faces[i].orig[0], faces[i].orig[1], faces[i].orig[2]});
         }
     }
 

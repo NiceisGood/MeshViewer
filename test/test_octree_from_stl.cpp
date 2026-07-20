@@ -129,9 +129,8 @@ int main()
                 if (d2 < min_dist2) min_dist2 = d2;
             }
         }
-        double dist = std::sqrt(min_dist2);
 
-        return dist < threshold;
+        return std::sqrt(min_dist2) < threshold;
     });
 
     std::printf("Octree built: %d nodes, %d leaves, max depth %d\n",

@@ -202,6 +202,10 @@ void Octree::enforce_2to1()
 //  to the max corner (NEU), ensuring face compatibility between
 //  adjacent cells.
 //
+//  For leaf cubes with smaller (finer) neighbours on any face, a
+//  virtual 8-sub-cube subdivision is used instead, ensuring conforming
+//  faces at level transitions.
+//
 //  Cube vertices (local):
 //    v0 = (cx-hs, cy-hs, cz-hs)  SWL
 //    v1 = (cx+hs, cy-hs, cz-hs)  SEL
@@ -216,24 +220,22 @@ void Octree::enforce_2to1()
 //    (v0, v1, v3, v7)  — bottom-front-right
 //    (v0, v3, v2, v7)  — bottom-back-left
 //    (v0, v7, v5, v1)  — right-front
-//    (v0, v4, v7, v5)  — top-front
-//    (v0, v6, v7, v4)  — top-back-left
+//    (v0, v5, v7, v4)  — top-front
+//    (v0, v4, v7, v6)  — top-back-left
 //    (v0, v2, v6, v7)  — left-back
 //
 //  Each tetrahedron has positive orientation and volume = hs³/6.
 //  Total volume per cube = 6 × hs³/6 = hs³ = (2*hs)³/8 = cell volume.
 // =======================================================================
 
-int Octree::add_cube_tets(int node_idx,
-                           std::map<std::tuple<double,double,double>, int>& vtx_map,
-                           std::vector<OctPoint3D>& pts_out,
-                           std::vector<OctTetrahedron>& tets_out) const
+void Octree::add_cube_tets_at(double cx, double cy, double cz, double hs,
+                               std::map<std::tuple<double,double,double>, int>& vtx_map,
+                               std::vector<OctPoint3D>& pts_out,
+                               std::vector<OctTetrahedron>& tets_out) const
 {
-    const Node& n = nodes_[node_idx];
-    double h = n.hs;
-    double x0 = n.cx - h, x1 = n.cx + h;
-    double y0 = n.cy - h, y1 = n.cy + h;
-    double z0 = n.cz - h, z1 = n.cz + h;
+    double x0 = cx - hs, x1 = cx + hs;
+    double y0 = cy - hs, y1 = cy + hs;
+    double z0 = cz - hs, z1 = cz + hs;
 
     auto get_vtx = [&](double x, double y, double z) -> int {
         auto key = std::make_tuple(x, y, z);
@@ -256,14 +258,45 @@ int Octree::add_cube_tets(int node_idx,
     int v7 = get_vtx(x1, y1, z1);  // NEU
 
     // 6 tetrahedra along diagonal (v0, v7) — all positively oriented
-    tets_out.push_back({v0, v1, v3, v7});
-    tets_out.push_back({v0, v3, v2, v7});
-    tets_out.push_back({v0, v7, v5, v1});
-    tets_out.push_back({v0, v5, v7, v4});  // was (v0,v4,v7,v5) — swapped v4↔v5 for +orient
-    tets_out.push_back({v0, v4, v7, v6});  // was (v0,v6,v7,v4) — swapped v6↔v4 for +orient
-    tets_out.push_back({v0, v2, v6, v7});
+    tets_out.push_back({v0, v1, v3, v7});  // bottom-front-right
+    tets_out.push_back({v0, v3, v2, v7});  // bottom-back-left
+    tets_out.push_back({v0, v7, v5, v1});  // right-front
+    tets_out.push_back({v0, v5, v7, v4});  // top-front
+    tets_out.push_back({v0, v4, v7, v6});  // top-back-left
+    tets_out.push_back({v0, v2, v6, v7});  // left-back
+}
 
-    return v0;
+int Octree::add_cube_tets(int node_idx,
+                           std::map<std::tuple<double,double,double>, int>& vtx_map,
+                           std::vector<OctPoint3D>& pts_out,
+                           std::vector<OctTetrahedron>& tets_out) const
+{
+    const Node& n = nodes_[node_idx];
+    add_cube_tets_at(n.cx, n.cy, n.cz, n.hs, vtx_map, pts_out, tets_out);
+    return 0;  // first vertex index not needed externally
+}
+
+void Octree::add_cube_tets_subdivided(
+    int node_idx,
+    std::map<std::tuple<double,double,double>, int>& vtx_map,
+    std::vector<OctPoint3D>& pts_out,
+    std::vector<OctTetrahedron>& tets_out) const
+{
+    const Node& n = nodes_[node_idx];
+    double hs2 = n.hs * 0.5;
+    double cx = n.cx, cy = n.cy, cz = n.cz;
+
+    // 8 virtual sub-cubes (same layout as the octree's own children)
+    //  0=SWL, 1=SEL, 2=NWL, 3=NEL,
+    //  4=SWU, 5=SEU, 6=NWU, 7=NEU
+    add_cube_tets_at(cx - hs2, cy - hs2, cz - hs2, hs2, vtx_map, pts_out, tets_out);  // SWL
+    add_cube_tets_at(cx + hs2, cy - hs2, cz - hs2, hs2, vtx_map, pts_out, tets_out);  // SEL
+    add_cube_tets_at(cx - hs2, cy + hs2, cz - hs2, hs2, vtx_map, pts_out, tets_out);  // NWL
+    add_cube_tets_at(cx + hs2, cy + hs2, cz - hs2, hs2, vtx_map, pts_out, tets_out);  // NEL
+    add_cube_tets_at(cx - hs2, cy - hs2, cz + hs2, hs2, vtx_map, pts_out, tets_out);  // SWU
+    add_cube_tets_at(cx + hs2, cy - hs2, cz + hs2, hs2, vtx_map, pts_out, tets_out);  // SEU
+    add_cube_tets_at(cx - hs2, cy + hs2, cz + hs2, hs2, vtx_map, pts_out, tets_out);  // NWU
+    add_cube_tets_at(cx + hs2, cy + hs2, cz + hs2, hs2, vtx_map, pts_out, tets_out);  // NEU
 }
 
 std::vector<OctTetrahedron> Octree::tetrahedralize(
@@ -285,7 +318,25 @@ std::vector<OctTetrahedron> Octree::tetrahedralize(
     tets.reserve(leaves.size() * 6);
 
     for (int li : leaves) {
-        add_cube_tets(li, vtx_map, points_out, tets);
+        const Node& n = nodes_[li];
+        int n_depth = n.depth;
+
+        // Check if any face neighbour is finer (depth > current depth).
+        // If so, use virtual 8-sub-cube subdivision to ensure face-conforming
+        // triangulation at level transitions.
+        bool has_finer_neighbour = false;
+        for (int f = 0; f < 6; ++f) {
+            int nidx = face_neighbour(li, f);
+            if (nidx != -1 && is_leaf(nidx) && nodes_[nidx].depth > n_depth) {
+                has_finer_neighbour = true;
+                break;
+            }
+        }
+
+        if (has_finer_neighbour)
+            add_cube_tets_subdivided(li, vtx_map, points_out, tets);
+        else
+            add_cube_tets(li, vtx_map, points_out, tets);
     }
 
     return tets;

@@ -306,16 +306,19 @@ bool read_qmesh_3d(const std::string& path, MeshData& out)
     }
 
     // Extract surface: collect all tetra faces and keep boundary-only faces
-    struct TetFace { int v[3]; };
+    struct TetFace {
+        int v[3];      // sorted indices (for deduplication)
+        int orig[3];   // original vertex order (for consistent winding)
+    };
     auto make_face = [](int a, int b, int c) -> TetFace {
+        int orig[3] = {a, b, c};
         int v[3] = {a, b, c};
         std::sort(v, v + 3);
-        return {v[0], v[1], v[2]};
+        return {{v[0], v[1], v[2]}, {orig[0], orig[1], orig[2]}};
     };
 
     std::vector<TetFace> faces;
     faces.reserve(num_tets * 4);
-    std::vector<int> face_owners;  // stores a combined key for matching
 
     for (uint32_t i = 0; i < num_tets; ++i) {
         int32_t tet[4];
@@ -323,11 +326,12 @@ bool read_qmesh_3d(const std::string& path, MeshData& out)
             std::fclose(f);
             return false;
         }
-        // 4 faces of a tetrahedron
-        faces.push_back(make_face(tet[0], tet[2], tet[1]));
-        faces.push_back(make_face(tet[0], tet[1], tet[3]));
-        faces.push_back(make_face(tet[1], tet[2], tet[3]));
-        faces.push_back(make_face(tet[0], tet[3], tet[2]));
+        // 4 faces of a tetrahedron, stored with original winding
+        // for consistent outward-facing surface normals.
+        faces.push_back(make_face(tet[0], tet[2], tet[1]));  // opposite v3
+        faces.push_back(make_face(tet[0], tet[1], tet[3]));  // opposite v2
+        faces.push_back(make_face(tet[1], tet[2], tet[3]));  // opposite v0
+        faces.push_back(make_face(tet[0], tet[3], tet[2]));  // opposite v1
     }
 
     std::fclose(f);
@@ -359,9 +363,11 @@ bool read_qmesh_3d(const std::string& path, MeshData& out)
                 unique = false;
         }
         if (unique) {
-            out.indices.push_back(static_cast<unsigned int>(faces[i].v[0]));
-            out.indices.push_back(static_cast<unsigned int>(faces[i].v[1]));
-            out.indices.push_back(static_cast<unsigned int>(faces[i].v[2]));
+            // Use the ORIGINAL vertex order (not sorted) to preserve
+            // consistent winding direction from the tetrahedron.
+            out.indices.push_back(static_cast<unsigned int>(faces[i].orig[0]));
+            out.indices.push_back(static_cast<unsigned int>(faces[i].orig[1]));
+            out.indices.push_back(static_cast<unsigned int>(faces[i].orig[2]));
         }
     }
 

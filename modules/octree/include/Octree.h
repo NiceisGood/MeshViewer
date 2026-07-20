@@ -112,6 +112,23 @@ private:
                       std::vector<OctPoint3D>& pts_out,
                       std::vector<OctTetrahedron>& tets_out) const;
 
+    /// 6-tet decomposition at an arbitrary position (cx, cy, cz) with
+    /// half-size hs.  Extracted for reuse by add_cube_tets and the
+    /// virtual subdivision below.
+    void add_cube_tets_at(double cx, double cy, double cz, double hs,
+                          std::map<std::tuple<double,double,double>, int>& vtx_map,
+                          std::vector<OctPoint3D>& pts_out,
+                          std::vector<OctTetrahedron>& tets_out) const;
+
+    /// Virtual subdivision: for a leaf cube with at least one face
+    /// adjacent to a smaller (finer) neighbour, subdivide into 8
+    /// virtual sub-cubes and tetrahedralize each one.  This ensures
+    /// face-conformity at level transitions.
+    void add_cube_tets_subdivided(int node_idx,
+                                  std::map<std::tuple<double,double,double>, int>& vtx_map,
+                                  std::vector<OctPoint3D>& pts_out,
+                                  std::vector<OctTetrahedron>& tets_out) const;
+
     std::vector<Node> nodes_;
     int num_nodes_;
     int num_leaves_;

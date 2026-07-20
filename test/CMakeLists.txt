@@ -29,6 +29,9 @@ target_link_libraries(test_export PRIVATE meshutils delaunay2d delaunay3d)
 add_executable(test_roundtrip test_roundtrip.cpp)
 target_link_libraries(test_roundtrip PRIVATE meshutils quadtree)
 
+add_executable(test_octree_diagnostic test_octree_diagnostic.cpp)
+target_link_libraries(test_octree_diagnostic PRIVATE octree meshutils)
+
 add_executable(test_octree_from_stl test_octree_from_stl.cpp)
 target_link_libraries(test_octree_from_stl PRIVATE octree meshutils)
 

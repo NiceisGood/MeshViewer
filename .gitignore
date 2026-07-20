@@ -8,6 +8,12 @@ lib/
 *.lib
 *.dll.a
 
+# clangd cache
+.cache/
+
+# Hermes temp files
+*.hermes-tmp.*
+
 # Visualisation output & mesh exports
 *.obj
 
