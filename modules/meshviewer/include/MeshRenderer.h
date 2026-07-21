@@ -30,6 +30,13 @@ public:
     };
     Q_ENUM(DisplayMode)
 
+    /// Projection mode enumeration.
+    enum ProjectionMode {
+        Perspective = 0,    ///< Perspective projection.
+        Orthographic        ///< Orthographic projection.
+    };
+    Q_ENUM(ProjectionMode)
+
     explicit MeshRenderer(QWidget* parent = nullptr);
     ~MeshRenderer();
 
@@ -39,9 +46,16 @@ public:
     /// Clear the current mesh.
     void clearMesh();
 
+    /// Reset camera to default view (preserves mesh).
+    void resetView();
+
     /// Set display mode.
     void setDisplayMode(DisplayMode mode) { display_mode_ = mode; update(); }
     DisplayMode displayMode() const { return display_mode_; }
+
+    /// Set projection mode.
+    void setProjectionMode(ProjectionMode mode);
+    ProjectionMode projectionMode() const { return projection_mode_; }
 
     /// Get the current mesh info string.
     QString meshInfo() const;
@@ -65,6 +79,7 @@ private:
 
     // Arcball helpers
     QVector3D arcballVector(const QPointF& p) const;
+    QVector3D computeCenter() const;
 
     // Mesh data
     MeshData mesh_;
@@ -82,6 +97,7 @@ private:
     QMatrix4x4 projection_;
     QMatrix4x4 view_;
     QMatrix4x4 model_;
+    QVector3D center_{0.0f, 0.0f, 0.0f};
     float rotation_quat_[4] = {1.0f, 0.0f, 0.0f, 0.0f};  // w, x, y, z
     float pan_x_ = 0.0f, pan_y_ = 0.0f;
     float zoom_ = 1.0f;
@@ -94,6 +110,7 @@ private:
 
     // Display settings
     DisplayMode display_mode_ = Solid;
+    ProjectionMode projection_mode_ = Orthographic;
     bool initialized_ = false;
 };
 

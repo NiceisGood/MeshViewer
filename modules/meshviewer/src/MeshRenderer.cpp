@@ -1,6 +1,7 @@
 #include "MeshRenderer.h"
 
 #include <QOpenGLShader>
+#include <algorithm>
 #include <cmath>
 #include <cstring>
 
@@ -35,6 +36,8 @@ MeshRenderer::~MeshRenderer()
 void MeshRenderer::loadMesh(const MeshData& mesh)
 {
     mesh_ = mesh;
+    center_ = computeCenter();
+    resetView();
     if (initialized_) {
         makeCurrent();
         buildBuffers();
@@ -94,6 +97,7 @@ void MeshRenderer::initializeGL()
     // Reset camera
     zoom_ = 1.0f;
     pan_x_ = pan_y_ = 0.0f;
+    center_ = QVector3D(0.0f, 0.0f, 0.0f);
     rotation_quat_[0] = 1.0f;
     rotation_quat_[1] = rotation_quat_[2] = rotation_quat_[3] = 0.0f;
 }
@@ -102,7 +106,15 @@ void MeshRenderer::resizeGL(int w, int h)
 {
     float aspect = (h > 0) ? static_cast<float>(w) / h : 1.0f;
     projection_.setToIdentity();
-    projection_.perspective(45.0f, aspect, 0.01f, 1000.0f);
+    if (projection_mode_ == Perspective) {
+        projection_.perspective(45.0f, aspect, 0.01f, 1000.0f);
+    } else {
+        // Orthographic: fit a 3-unit cube centered at origin
+        float size = 1.5f;
+        projection_.ortho(-size * aspect, size * aspect,
+                          -size, size,
+                          0.01f, 1000.0f);
+    }
 }
 
 void MeshRenderer::setupShaders()
@@ -231,6 +243,49 @@ QVector3D MeshRenderer::arcballVector(const QPointF& p) const
     return QVector3D(x, y, z).normalized();
 }
 
+QVector3D MeshRenderer::computeCenter() const
+{
+    if (mesh_.vertices.empty())
+        return QVector3D(0.0f, 0.0f, 0.0f);
+
+    float minX = mesh_.vertices[0], maxX = mesh_.vertices[0];
+    float minY = mesh_.vertices[1], maxY = mesh_.vertices[1];
+    float minZ = mesh_.vertices[2], maxZ = mesh_.vertices[2];
+
+    for (size_t i = 3; i < mesh_.vertices.size(); i += 3) {
+        minX = std::min(minX, mesh_.vertices[i]);
+        maxX = std::max(maxX, mesh_.vertices[i]);
+        minY = std::min(minY, mesh_.vertices[i + 1]);
+        maxY = std::max(maxY, mesh_.vertices[i + 1]);
+        minZ = std::min(minZ, mesh_.vertices[i + 2]);
+        maxZ = std::max(maxZ, mesh_.vertices[i + 2]);
+    }
+
+    return QVector3D((minX + maxX) * 0.5f,
+                     (minY + maxY) * 0.5f,
+                     (minZ + maxZ) * 0.5f);
+}
+
+void MeshRenderer::resetView()
+{
+    zoom_ = 1.0f;
+    pan_x_ = pan_y_ = 0.0f;
+    rotation_quat_[0] = 1.0f;
+    rotation_quat_[1] = rotation_quat_[2] = rotation_quat_[3] = 0.0f;
+    update();
+}
+
+void MeshRenderer::setProjectionMode(ProjectionMode mode)
+{
+    projection_mode_ = mode;
+    // Rebuild projection matrix with the new mode
+    int w = width();
+    int h = height();
+    if (w > 0 && h > 0)
+        resizeGL(w, h);
+    update();
+}
+
 // =======================================================================
 //  Mouse / wheel events
 // =======================================================================
@@ -276,8 +331,9 @@ void MeshRenderer::mouseMoveEvent(QMouseEvent* event)
             rotation_quat_[2] = ry; rotation_quat_[3] = rz;
         }
     } else if (last_button_ == Qt::RightButton) {
-        // Pan
-        float scale = 0.01f * zoom_;
+        // Pan — scale by camera distance so pan speed is consistent at all zoom levels
+        float dist = 3.0f * zoom_;
+        float scale = dist * 0.0033f;
         pan_x_ += dx * scale;
         pan_y_ -= dy * scale;
     }
@@ -309,13 +365,6 @@ void MeshRenderer::paintGL()
 
     if (mesh_.empty()) return;
 
-    // Build view matrix
-    view_.setToIdentity();
-    // Apply zoom (translate back)
-    view_.translate(0.0f, 0.0f, -3.0f * zoom_);
-    // Apply pan
-    view_.translate(pan_x_, pan_y_, 0.0f);
-
     // Build rotation matrix from quaternion
     QMatrix4x4 rot;
     float qw = rotation_quat_[0], qx = rotation_quat_[1];
@@ -330,8 +379,17 @@ void MeshRenderer::paintGL()
     rot(2,1) = 2*(qy*qz - qx*qw);
     rot(2,2) = 1 - 2*(qx*qx + qy*qy);
 
-    model_.setToIdentity();
-    model_ = rot;
+    // Model matrix: rotate around mesh center
+    // model = translate(center) * rotate * translate(-center)
+    QMatrix4x4 t_center, t_neg;
+    t_center.translate(center_);
+    t_neg.translate(-center_);
+    model_ = t_center * rot * t_neg;
+
+    // View matrix: camera distance (zoom) + pan in screen space
+    view_.setToIdentity();
+    view_.translate(pan_x_, pan_y_, 0.0f);
+    view_.translate(0.0f, 0.0f, -3.0f * zoom_);
 
     QMatrix4x4 mvp = projection_ * view_ * model_;
 

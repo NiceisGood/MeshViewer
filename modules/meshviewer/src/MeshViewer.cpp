@@ -106,11 +106,39 @@ void MeshViewer::createMenus()
 
     view_menu->addSeparator();
 
+    // Projection mode submenu
+    QMenu* proj_menu = view_menu->addMenu(QStringLiteral("&Projection Mode"));
+
+    projection_group_ = new QActionGroup(this);
+    projection_group_->setExclusive(true);
+
+    QAction* ortho_act = proj_menu->addAction(QStringLiteral("&Orthographic"));
+    ortho_act->setCheckable(true);
+    ortho_act->setChecked(true);
+    ortho_act->setData(static_cast<int>(MeshRenderer::Orthographic));
+    ortho_act->setShortcut(QKeySequence(Qt::Key_O));
+    projection_group_->addAction(ortho_act);
+
+    QAction* persp_act = proj_menu->addAction(QStringLiteral("&Perspective"));
+    persp_act->setCheckable(true);
+    persp_act->setChecked(false);
+    persp_act->setData(static_cast<int>(MeshRenderer::Perspective));
+    persp_act->setShortcut(QKeySequence(Qt::Key_P));
+    projection_group_->addAction(persp_act);
+
+    connect(projection_group_, &QActionGroup::triggered,
+            [this](QAction* action) {
+        if (!action) return;
+        auto mode = static_cast<MeshRenderer::ProjectionMode>(action->data().toInt());
+        renderer_->setProjectionMode(mode);
+    });
+
+    view_menu->addSeparator();
+
     QAction* reset_act = view_menu->addAction(QStringLiteral("&Reset View"));
     reset_act->setShortcut(QKeySequence(Qt::Key_R));
     connect(reset_act, &QAction::triggered, [this]() {
-        renderer_->clearMesh();
-        renderer_->loadMesh(MeshData()); // triggers reset
+        renderer_->resetView();
     });
 }
 

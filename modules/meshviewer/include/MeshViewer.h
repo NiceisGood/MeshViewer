@@ -35,6 +35,7 @@ private:
     MeshRenderer* renderer_;
     QLabel* info_label_;
     QActionGroup* display_group_ = nullptr;
+    QActionGroup* projection_group_ = nullptr;
 };
 
 #endif // MESHVIEWER_H
