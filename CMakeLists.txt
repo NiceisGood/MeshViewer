@@ -4,6 +4,11 @@ project(delaunay LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# MSVC: force UTF-8 source encoding (✓/✗ etc.)
+if(MSVC)
+    add_compile_options(/utf-8)
+endif()
+
 # All binaries organised by build config under lib/
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/lib/$<CONFIG>)
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/lib/$<CONFIG>)

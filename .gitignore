@@ -17,6 +17,9 @@ lib/
 # Visualisation output & mesh exports
 *.obj
 
+# But track test output .obj files in data/
+!data/*.obj
+
 # IDE / editor
 .vscode/
 .idea/

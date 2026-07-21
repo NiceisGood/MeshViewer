@@ -190,7 +190,7 @@ int main() {
         Delaunay2D dt(pts, Delaunay2D::Strategy::Optimized);
         auto tris = dt.triangulate();
         int v = verify_delaunay_2d(pts, tris);
-        export_obj_2d(pts, tris, "delaunay2d_square.obj");
+        export_obj_2d(pts, tris, "data/delaunay2d_square.obj");
         std::cout << "  4 corners : " << tris.size() << " tris, "
                   << v << " violations "
                   << (v == 0 ? "✓" : "✗") << "\n\n";
@@ -204,7 +204,7 @@ int main() {
         Delaunay2D dt(pts, Delaunay2D::Strategy::Optimized);
         auto tris = dt.triangulate();
         int v = verify_delaunay_2d(pts, tris);
-        export_obj_2d(pts, tris, "delaunay2d_100.obj");
+        export_obj_2d(pts, tris, "data/delaunay2d_100.obj");
         std::cout << "  100 random: " << tris.size() << " tris, "
                   << v << " violations "
                   << (v == 0 ? "✓" : "✗") << "\n";
@@ -218,7 +218,7 @@ int main() {
         Delaunay3D dt(pts, Delaunay3D::Strategy::Optimized);
         auto tets = dt.tetrahedralize();
         int v = verify_delaunay_3d(pts, tets);
-        export_obj_3d(pts, tets, "delaunay3d_5pts.obj");
+        export_obj_3d(pts, tets, "data/delaunay3d_5pts.obj");
         std::cout << "  5 points  : " << tets.size() << " tets, "
                   << v << " violations "
                   << (v == 0 ? "✓" : "✗") << "\n\n";
@@ -231,7 +231,7 @@ int main() {
         Delaunay3D dt(pts, Delaunay3D::Strategy::Optimized);
         auto tets = dt.tetrahedralize();
         int v = verify_delaunay_3d(pts, tets);
-        export_obj_3d(pts, tets, "delaunay3d_100.obj");
+        export_obj_3d(pts, tets, "data/delaunay3d_100.obj");
         std::cout << "  100 random: " << tets.size() << " tets, "
                   << v << " violations "
                   << (v == 0 ? "✓" : "✗") << "\n";
