@@ -30,6 +30,7 @@ target_include_directories(meshviewer PRIVATE
 target_link_libraries(meshviewer PRIVATE
     Qt5::Widgets
     Qt5::OpenGL
+    octree
 )
 
 # Place the executable alongside other test binaries

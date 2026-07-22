@@ -21,9 +21,11 @@ MeshRenderer::~MeshRenderer()
     makeCurrent();
     if (vao_) glDeleteVertexArrays(1, &vao_);
     if (wireframe_vao_) glDeleteVertexArrays(1, &wireframe_vao_);
+    if (quad_vao_) glDeleteVertexArrays(1, &quad_vao_);
     if (vbo_) glDeleteBuffers(1, &vbo_);
     if (ebo_) glDeleteBuffers(1, &ebo_);
     if (wireframe_ebo_) glDeleteBuffers(1, &wireframe_ebo_);
+    if (quad_ebo_) glDeleteBuffers(1, &quad_ebo_);
     delete shader_;
     delete wire_shader_;
     doneCurrent();
@@ -85,9 +87,11 @@ void MeshRenderer::initializeGL()
 
     glGenVertexArrays(1, &vao_);
     glGenVertexArrays(1, &wireframe_vao_);
+    glGenVertexArrays(1, &quad_vao_);
     glGenBuffers(1, &vbo_);
     glGenBuffers(1, &ebo_);
     glGenBuffers(1, &wireframe_ebo_);
+    glGenBuffers(1, &quad_ebo_);
 
     if (!mesh_.empty())
         buildBuffers();
@@ -226,6 +230,40 @@ void MeshRenderer::buildBuffers()
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), nullptr);
     glEnableVertexAttribArray(0);
     glBindVertexArray(0);
+
+    // --- Quad wireframe VAO (line segments from quad faces) ---
+    quad_line_count_ = 0;
+    if (!mesh_.quad_indices.empty()) {
+        // Each quad → 4 line segments (8 indices)
+        std::vector<unsigned int> quad_lines;
+        quad_lines.reserve(mesh_.quad_indices.size() / 4 * 8);
+        for (size_t i = 0; i < mesh_.quad_indices.size(); i += 4) {
+            unsigned int a = mesh_.quad_indices[i];
+            unsigned int b = mesh_.quad_indices[i + 1];
+            unsigned int c = mesh_.quad_indices[i + 2];
+            unsigned int d = mesh_.quad_indices[i + 3];
+            quad_lines.push_back(a);
+            quad_lines.push_back(b);
+            quad_lines.push_back(b);
+            quad_lines.push_back(c);
+            quad_lines.push_back(c);
+            quad_lines.push_back(d);
+            quad_lines.push_back(d);
+            quad_lines.push_back(a);
+        }
+        quad_line_count_ = static_cast<int>(quad_lines.size());
+
+        glBindVertexArray(quad_vao_);
+        glBindBuffer(GL_ARRAY_BUFFER, vbo_);  // share vertex buffer
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, quad_ebo_);
+        glBufferData(GL_ELEMENT_ARRAY_BUFFER,
+                     quad_lines.size() * sizeof(unsigned int),
+                     quad_lines.data(), GL_STATIC_DRAW);
+
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), nullptr);
+        glEnableVertexAttribArray(0);
+        glBindVertexArray(0);
+    }
 }
 
 // =======================================================================
@@ -398,8 +436,9 @@ void MeshRenderer::paintGL()
 
     QMatrix4x4 mvp = projection_ * view_ * model_;
 
-    const bool draw_solid = (display_mode_ == Solid || display_mode_ == WireframeSolid);
+    const bool draw_solid = (display_mode_ == Solid || display_mode_ == WireframeSolid || display_mode_ == QuadWireframeSolid);
     const bool draw_wire = (display_mode_ == Wireframe || display_mode_ == WireframeSolid);
+    const bool draw_quad_wire = (display_mode_ == QuadWireframe || display_mode_ == QuadWireframeSolid) && quad_line_count_ > 0;
 
     // --- Solid fill ---
     if (draw_solid) {
@@ -435,5 +474,21 @@ void MeshRenderer::paintGL()
 
         glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
         glDisable(GL_POLYGON_OFFSET_LINE);
+    }
+
+    // --- Quad wireframe (octree cell faces) ---
+    if (draw_quad_wire) {
+        glLineWidth(1.5f);
+
+        wire_shader_->bind();
+        wire_shader_->setUniformValue("uMVP", mvp);
+        wire_shader_->setUniformValue("uColor", QVector3D(0.2f, 0.8f, 0.4f));  // green
+
+        glBindVertexArray(quad_vao_);
+        glDrawElements(GL_LINES,
+                       quad_line_count_,
+                       GL_UNSIGNED_INT, nullptr);
+        glBindVertexArray(0);
+        wire_shader_->release();
     }
 }

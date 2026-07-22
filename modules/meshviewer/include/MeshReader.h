@@ -14,18 +14,23 @@ struct MeshData {
     std::vector<float> vertices;  // interleaved x,y,z per vertex
     std::vector<unsigned int> indices;  // triangle vertex indices (3 per tri)
 
+    // Optional quad faces (4 indices per quad) for octree cell face wireframe
+    std::vector<unsigned int> quad_indices;
+
     // Optional per-face normals (3 floats per triangle, for STL)
     std::vector<float> normals;
 
     void clear() {
         vertices.clear();
         indices.clear();
+        quad_indices.clear();
         normals.clear();
     }
 
     bool empty() const { return vertices.empty() || indices.empty(); }
     int num_triangles() const { return static_cast<int>(indices.size() / 3); }
     int num_vertices() const { return static_cast<int>(vertices.size() / 3); }
+    int num_quads() const { return static_cast<int>(quad_indices.size() / 4); }
 };
 
 // -----------------------------------------------------------------------
@@ -86,5 +91,14 @@ template<typename Point3D, typename Tetrahedron>
 void read_3d_mesh(const std::vector<Point3D>& pts,
                   const std::vector<Tetrahedron>& tets,
                   MeshData& out);
+
+/// Forward declaration for octree bridge.
+class Octree;
+
+/// Fill MeshData from an Octree: extracts the surface as triangles (for solid
+/// rendering) and the octree cell faces as quads (for quad wireframe display).
+/// The quad data populates MeshData::quad_indices so QuadWireframe /
+/// QuadWireframeSolid display modes work correctly.
+void fill_meshdata_from_octree(const Octree& oct, MeshData& out);
 
 #endif // MESHREADER_H

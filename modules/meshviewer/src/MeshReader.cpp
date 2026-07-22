@@ -7,6 +7,8 @@
 #include <string>
 #include <unordered_map>
 
+#include "Octree.h"
+
 // =======================================================================
 //  STL — ASCII
 // =======================================================================
@@ -253,13 +255,13 @@ bool read_qmesh_3d(const std::string& path, MeshData& out)
         return false;
     }
 
-    // Read version
+    // Read version — v1: tetrahedra only, v2: tetrahedra + optional quad faces
     uint32_t version;
     if (std::fread(&version, sizeof(version), 1, f) != 1) {
         std::fclose(f);
         return false;
     }
-    if (version != 1) {
+    if (version != 1 && version != 2) {
         std::fclose(f);
         return false;
     }
@@ -371,6 +373,23 @@ bool read_qmesh_3d(const std::string& path, MeshData& out)
         }
     }
 
+    // Version 2+: read optional quad face data (for octree cell wireframe)
+    out.quad_indices.clear();
+    if (version >= 2) {
+        uint32_t num_quads = 0;
+        if (std::fread(&num_quads, sizeof(num_quads), 1, f) == 1 && num_quads > 0) {
+            out.quad_indices.reserve(num_quads * 4);
+            for (uint32_t i = 0; i < num_quads; ++i) {
+                int32_t quad[4];
+                if (std::fread(quad, sizeof(int32_t), 4, f) != 4) break;
+                out.quad_indices.push_back(static_cast<unsigned int>(quad[0]));
+                out.quad_indices.push_back(static_cast<unsigned int>(quad[1]));
+                out.quad_indices.push_back(static_cast<unsigned int>(quad[2]));
+                out.quad_indices.push_back(static_cast<unsigned int>(quad[3]));
+            }
+        }
+    }
+
     return !out.empty();
 }
 
@@ -461,4 +480,99 @@ bool read_qmesh(const std::string& path, MeshData& out)
 
     std::fclose(f);
     return !out.empty();
+}
+
+// =======================================================================
+//  Octree → MeshData bridge
+// =======================================================================
+
+void fill_meshdata_from_octree(const Octree& oct, MeshData& out)
+{
+    out.clear();
+
+    // 1. Extract tetrahedral mesh from octree
+    std::vector<OctPoint3D> pts;
+    auto tets = oct.tetrahedralize(pts);
+
+    // 2. Copy vertices to MeshData (OctPoint3D → float x 3)
+    out.vertices.reserve(pts.size() * 3);
+    for (const auto& p : pts) {
+        out.vertices.push_back(static_cast<float>(p.x));
+        out.vertices.push_back(static_cast<float>(p.y));
+        out.vertices.push_back(static_cast<float>(p.z));
+    }
+
+    // 3. Extract surface triangles from tetrahedra
+    // (same algorithm as read_qmesh_3d)
+    struct TetFace {
+        int v[3];      // sorted indices (for deduplication)
+        int orig[3];   // original vertex order (for consistent winding)
+    };
+    auto make_face = [](int a, int b, int c) -> TetFace {
+        int orig[3] = {a, b, c};
+        int v[3] = {a, b, c};
+        std::sort(v, v + 3);
+        return {{v[0], v[1], v[2]}, {orig[0], orig[1], orig[2]}};
+    };
+
+    std::vector<TetFace> faces;
+    faces.reserve(tets.size() * 4);
+
+    for (const auto& tet : tets) {
+        faces.push_back(make_face(tet.v0, tet.v2, tet.v1));  // opposite v3
+        faces.push_back(make_face(tet.v0, tet.v1, tet.v3));  // opposite v2
+        faces.push_back(make_face(tet.v1, tet.v2, tet.v3));  // opposite v0
+        faces.push_back(make_face(tet.v0, tet.v3, tet.v2));  // opposite v1
+    }
+
+    // Find boundary faces (appear exactly once)
+    std::sort(faces.begin(), faces.end(), [](const TetFace& a, const TetFace& b) {
+        if (a.v[0] != b.v[0]) return a.v[0] < b.v[0];
+        if (a.v[1] != b.v[1]) return a.v[1] < b.v[1];
+        return a.v[2] < b.v[2];
+    });
+
+    out.indices.reserve(faces.size());
+    for (size_t i = 0; i < faces.size(); ++i) {
+        bool unique = true;
+        if (i > 0) {
+            const auto& prev = faces[i - 1];
+            if (prev.v[0] == faces[i].v[0] &&
+                prev.v[1] == faces[i].v[1] &&
+                prev.v[2] == faces[i].v[2])
+                unique = false;
+        }
+        if (i + 1 < faces.size()) {
+            const auto& next = faces[i + 1];
+            if (next.v[0] == faces[i].v[0] &&
+                next.v[1] == faces[i].v[1] &&
+                next.v[2] == faces[i].v[2])
+                unique = false;
+        }
+        if (unique) {
+            out.indices.push_back(static_cast<unsigned int>(faces[i].orig[0]));
+            out.indices.push_back(static_cast<unsigned int>(faces[i].orig[1]));
+            out.indices.push_back(static_cast<unsigned int>(faces[i].orig[2]));
+        }
+    }
+
+    // 4. Extract quad faces from octree
+    std::vector<OctPoint3D> quad_pts;
+    std::vector<int> quad_faces;
+    oct.extract_quad_faces(quad_pts, quad_faces);
+
+    // Note: extract_quad_faces uses its own vertex deduplication, producing
+    // vertices that may differ from the tetrahedralization's vertices.
+    // Append the quad vertices and remap indices.
+    unsigned int v_offset = static_cast<unsigned int>(out.num_vertices());
+    out.vertices.reserve(out.vertices.size() + quad_pts.size() * 3);
+    for (const auto& p : quad_pts) {
+        out.vertices.push_back(static_cast<float>(p.x));
+        out.vertices.push_back(static_cast<float>(p.y));
+        out.vertices.push_back(static_cast<float>(p.z));
+    }
+    out.quad_indices.reserve(quad_faces.size());
+    for (int idx : quad_faces) {
+        out.quad_indices.push_back(static_cast<unsigned int>(idx) + v_offset);
+    }
 }

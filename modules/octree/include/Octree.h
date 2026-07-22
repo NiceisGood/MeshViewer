@@ -68,6 +68,13 @@ public:
     std::vector<OctTetrahedron> tetrahedralize(
         std::vector<OctPoint3D>& points_out) const;
 
+    /// Extract quad faces for all leaf cubes (6 quads per leaf).
+    /// Each quad is 4 vertex indices into the same points as tetrahedralize().
+    /// Useful for wireframe display showing the original octree cell structure.
+    void extract_quad_faces(
+        std::vector<OctPoint3D>& points_out,
+        std::vector<int>& quad_face_indices_out) const;
+
     // ---- Statistics -------------------------------------------------------
     int num_nodes()  const { return num_nodes_;  }
     int num_leaves() const { return num_leaves_; }

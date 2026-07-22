@@ -101,6 +101,22 @@ void MeshViewer::createMenus()
     both_act->setShortcut(QKeySequence(Qt::Key_3));
     display_group_->addAction(both_act);
 
+    display_menu->addSeparator();
+
+    QAction* quad_wire_act = display_menu->addAction(QStringLiteral("Quad &Wireframe"));
+    quad_wire_act->setCheckable(true);
+    quad_wire_act->setChecked(false);
+    quad_wire_act->setData(static_cast<int>(MeshRenderer::QuadWireframe));
+    quad_wire_act->setShortcut(QKeySequence(Qt::Key_4));
+    display_group_->addAction(quad_wire_act);
+
+    QAction* quad_both_act = display_menu->addAction(QStringLiteral("Wireframe && &Solid + Quad"));
+    quad_both_act->setCheckable(true);
+    quad_both_act->setChecked(false);
+    quad_both_act->setData(static_cast<int>(MeshRenderer::QuadWireframeSolid));
+    quad_both_act->setShortcut(QKeySequence(Qt::Key_5));
+    display_group_->addAction(quad_both_act);
+
     connect(display_group_, &QActionGroup::triggered,
             this, &MeshViewer::onDisplayModeChanged);
 

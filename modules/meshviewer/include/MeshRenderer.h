@@ -25,8 +25,10 @@ public:
     /// Display mode enumeration.
     enum DisplayMode {
         Solid = 0,          ///< Solid fill only (default).
-        Wireframe,          ///< Wireframe only.
-        WireframeSolid      ///< Solid fill + wireframe overlay.
+        Wireframe,          ///< Wireframe only (triangulated).
+        WireframeSolid,     ///< Solid fill + triangulated wireframe overlay.
+        QuadWireframe,      ///< Octree cell quad wireframe only.
+        QuadWireframeSolid  ///< Solid fill + octree cell quad wireframe overlay.
     };
     Q_ENUM(DisplayMode)
 
@@ -87,9 +89,11 @@ private:
     // OpenGL resources — raw GLuint for core profile
     GLuint vao_ = 0;
     GLuint wireframe_vao_ = 0;
+    GLuint quad_vao_ = 0;       // quad wireframe VAO
     GLuint vbo_ = 0;
     GLuint ebo_ = 0;
     GLuint wireframe_ebo_ = 0;
+    GLuint quad_ebo_ = 0;       // quad wireframe index buffer
     QOpenGLShaderProgram* shader_ = nullptr;
     QOpenGLShaderProgram* wire_shader_ = nullptr;
 
@@ -101,6 +105,7 @@ private:
     float rotation_quat_[4] = {1.0f, 0.0f, 0.0f, 0.0f};  // w, x, y, z
     float pan_x_ = 0.0f, pan_y_ = 0.0f;
     float zoom_ = 1.0f;
+    int quad_line_count_ = 0;  // number of quad wireframe line indices
 
     // Interaction state
     bool dragging_ = false;

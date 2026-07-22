@@ -177,6 +177,30 @@ int main()
     ok = write_qmesh_3d(pts, tets, "data/octree_sphere_spider.qmesh3d");
     std::printf("QMesh3D export:     %s\n", ok ? "OK" : "FAIL");
 
+    // QMesh3D v2 — tetrahedral mesh + quad face data
+    // Extract quad faces from the octree for wireframe display
+    {
+        std::vector<OctPoint3D> quad_pts;
+        std::vector<int> quad_faces;
+        oct.extract_quad_faces(quad_pts, quad_faces);
+
+        // Remap quad indices: quad_pts are appended to pts, so offset indices
+        int v_offset = static_cast<int>(pts.size());
+        for (auto& idx : quad_faces)
+            idx += v_offset;
+
+        // Merge quad vertices into pts for a single vertex array
+        std::vector<OctPoint3D> all_pts = pts;
+        all_pts.insert(all_pts.end(), quad_pts.begin(), quad_pts.end());
+
+        // Need to remap tet indices too (they reference the original pts range)
+        std::vector<OctTetrahedron> all_tets = tets;
+        // tets already reference the first pts.size() vertices — no remap needed
+
+        ok = write_qmesh_3d(all_pts, all_tets, quad_faces, "data/octree_sphere_spider.qmesh3d");
+        std::printf("QMesh3D v2 export:  %s\n", ok ? "OK" : "FAIL");
+    }
+
     std::printf("\n=== Done ===\n");
     return 0;
 }

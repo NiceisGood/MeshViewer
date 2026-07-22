@@ -341,3 +341,86 @@ std::vector<OctTetrahedron> Octree::tetrahedralize(
 
     return tets;
 }
+
+// =======================================================================
+//  Quad face extraction — for octree cell wireframe display
+// =======================================================================
+
+void Octree::extract_quad_faces(
+    std::vector<OctPoint3D>& points_out,
+    std::vector<int>& quad_face_indices_out) const
+{
+    points_out.clear();
+    quad_face_indices_out.clear();
+
+    // Vertex deduplication map
+    std::map<std::tuple<double,double,double>, int> vtx_map;
+
+    // Collect leaf nodes
+    std::vector<int> leaves;
+    for (int i = 0; i < static_cast<int>(nodes_.size()); ++i)
+        if (is_leaf(i)) leaves.push_back(i);
+
+    points_out.reserve(leaves.size() * 8);
+    quad_face_indices_out.reserve(leaves.size() * 6 * 4);  // 6 quads × 4 indices
+
+    auto get_vtx = [&](double x, double y, double z) -> int {
+        auto key = std::make_tuple(x, y, z);
+        auto it = vtx_map.find(key);
+        if (it != vtx_map.end()) return it->second;
+        int idx = static_cast<int>(points_out.size());
+        points_out.push_back({x, y, z});
+        vtx_map[key] = idx;
+        return idx;
+    };
+
+    for (int li : leaves) {
+        const Node& n = nodes_[li];
+        double cx = n.cx, cy = n.cy, cz = n.cz, hs = n.hs;
+        double x0 = cx - hs, x1 = cx + hs;
+        double y0 = cy - hs, y1 = cy + hs;
+        double z0 = cz - hs, z1 = cz + hs;
+
+        // 8 corner vertices (matching tetrahedralize layout)
+        int v0 = get_vtx(x0, y0, z0);  // SWL
+        int v1 = get_vtx(x1, y0, z0);  // SEL
+        int v2 = get_vtx(x0, y1, z0);  // NWL
+        int v3 = get_vtx(x1, y1, z0);  // NEL
+        int v4 = get_vtx(x0, y0, z1);  // SWU
+        int v5 = get_vtx(x1, y0, z1);  // SEU
+        int v6 = get_vtx(x0, y1, z1);  // NWU
+        int v7 = get_vtx(x1, y1, z1);  // NEU
+
+        // 6 quad faces, counter-clockwise when viewed from outside
+        // Bottom (z-):  SWL, SEL, NEL, NWL
+        quad_face_indices_out.push_back(v0);
+        quad_face_indices_out.push_back(v1);
+        quad_face_indices_out.push_back(v3);
+        quad_face_indices_out.push_back(v2);
+        // Top (z+):  SWU, NWU, NEU, SEU
+        quad_face_indices_out.push_back(v4);
+        quad_face_indices_out.push_back(v6);
+        quad_face_indices_out.push_back(v7);
+        quad_face_indices_out.push_back(v5);
+        // Front (y-):  SWL, SWU, SEU, SEL
+        quad_face_indices_out.push_back(v0);
+        quad_face_indices_out.push_back(v4);
+        quad_face_indices_out.push_back(v5);
+        quad_face_indices_out.push_back(v1);
+        // Back (y+):  NWL, NEL, NEU, NWU
+        quad_face_indices_out.push_back(v2);
+        quad_face_indices_out.push_back(v3);
+        quad_face_indices_out.push_back(v7);
+        quad_face_indices_out.push_back(v6);
+        // Left (x-):  SWL, NWL, NWU, SWU
+        quad_face_indices_out.push_back(v0);
+        quad_face_indices_out.push_back(v2);
+        quad_face_indices_out.push_back(v6);
+        quad_face_indices_out.push_back(v4);
+        // Right (x+):  SEL, SEU, NEU, NEL
+        quad_face_indices_out.push_back(v1);
+        quad_face_indices_out.push_back(v5);
+        quad_face_indices_out.push_back(v7);
+        quad_face_indices_out.push_back(v3);
+    }
+}

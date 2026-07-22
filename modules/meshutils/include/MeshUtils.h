@@ -746,6 +746,52 @@ inline bool write_qmesh_3d(const std::vector<PointT>& pts,
     return true;
 }
 
+/// Write a 3D tetrahedral mesh with optional quad face data (QMesh3D v2).
+/// The quad data represents octree cell faces (4 indices per quad) used
+/// for quad wireframe display.  v2 format is backward-compatible: readers
+/// that only understand v1 will skip the quad data at end-of-file.
+/// Works with any point type that has .x/.y/.z and any tetrahedron type
+/// that has .v0/.v1/.v2/.v3.
+/// Returns true on success.
+template<typename PointT, typename TetT>
+inline bool write_qmesh_3d(const std::vector<PointT>& pts,
+                            const std::vector<TetT>& tets,
+                            const std::vector<int>& quad_faces,
+                            const std::string& path)
+{
+    // First write the standard v1 data
+    if (!write_qmesh_3d(pts, tets, path))
+        return false;
+
+    // Append quad face data (v2 extension)
+    FILE* f = std::fopen(path.c_str(), "ab");  // append binary
+    if (!f) return false;
+
+    uint32_t nq = static_cast<uint32_t>(quad_faces.size() / 4);
+    std::fwrite(&nq, sizeof(nq), 1, f);
+    for (size_t i = 0; i + 3 < quad_faces.size(); i += 4) {
+        int32_t quad[4] = {
+            static_cast<int32_t>(quad_faces[i]),
+            static_cast<int32_t>(quad_faces[i + 1]),
+            static_cast<int32_t>(quad_faces[i + 2]),
+            static_cast<int32_t>(quad_faces[i + 3])
+        };
+        std::fwrite(quad, sizeof(int32_t), 4, f);
+    }
+
+    std::fclose(f);
+
+    // Patch version from 1 to 2
+    f = std::fopen(path.c_str(), "r+b");
+    if (!f) return false;
+    std::fseek(f, 8, SEEK_SET);  // skip magic
+    uint32_t v2 = 2;
+    std::fwrite(&v2, sizeof(v2), 1, f);
+    std::fclose(f);
+
+    return true;
+}
+
 // -----------------------------------------------------------------------
 //  Mesh quality improvement via edge flipping
 // -----------------------------------------------------------------------
