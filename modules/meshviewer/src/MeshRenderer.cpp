@@ -339,6 +339,7 @@ void MeshRenderer::resetView()
     pan_x_ = pan_y_ = 0.0f;
     rotation_quat_[0] = 1.0f;
     rotation_quat_[1] = rotation_quat_[2] = rotation_quat_[3] = 0.0f;
+    resizeGL(width(), height());
     update();
 }
 
