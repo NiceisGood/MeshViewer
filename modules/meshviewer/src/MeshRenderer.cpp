@@ -39,6 +39,30 @@ void MeshRenderer::loadMesh(const MeshData& mesh)
 {
     mesh_ = mesh;
     center_ = computeCenter();
+    // Compute bounding box diagonal for near/far plane adjustment
+    {
+        float minX, maxX, minY, maxY, minZ, maxZ;
+        if (!mesh_.vertices.empty()) {
+            minX = maxX = mesh_.vertices[0];
+            minY = maxY = mesh_.vertices[1];
+            minZ = maxZ = mesh_.vertices[2];
+            for (size_t i = 3; i < mesh_.vertices.size(); i += 3) {
+                minX = std::min(minX, mesh_.vertices[i]);
+                maxX = std::max(maxX, mesh_.vertices[i]);
+                minY = std::min(minY, mesh_.vertices[i + 1]);
+                maxY = std::max(maxY, mesh_.vertices[i + 1]);
+                minZ = std::min(minZ, mesh_.vertices[i + 2]);
+                maxZ = std::max(maxZ, mesh_.vertices[i + 2]);
+            }
+        } else {
+            minX = maxX = minY = maxY = minZ = maxZ = 0.0f;
+        }
+        float dx = maxX - minX;
+        float dy = maxY - minY;
+        float dz = maxZ - minZ;
+        model_diag_ = std::sqrt(dx * dx + dy * dy + dz * dz);
+        if (model_diag_ < 1e-6f) model_diag_ = 1.0f;
+    }
     resetView();
     if (initialized_) {
         makeCurrent();
@@ -109,15 +133,20 @@ void MeshRenderer::initializeGL()
 void MeshRenderer::resizeGL(int w, int h)
 {
     float aspect = (h > 0) ? static_cast<float>(w) / h : 1.0f;
+    // Dynamic near/far based on model size to avoid depth precision issues
+    // when zoomed out.  near = 1% of diagonal, far = max(100*diag, 2*camera_dist).
+    float near_plane = model_diag_ * 0.01f;
+    float far_plane = model_diag_ * 100.0f;
+    if (3.0f * zoom_ * 2.0f > far_plane) far_plane = 3.0f * zoom_ * 2.0f;
     projection_.setToIdentity();
     if (projection_mode_ == Perspective) {
-        projection_.perspective(45.0f, aspect, 0.01f, 1000.0f);
+        projection_.perspective(45.0f, aspect, near_plane, far_plane);
     } else {
         // Orthographic: scale bounds by zoom_ so zoom wheel works
         float size = 1.5f / zoom_;
         projection_.ortho(-size * aspect, size * aspect,
                           -size, size,
-                          0.01f, 1000.0f);
+                          near_plane, far_plane);
     }
 }
 
@@ -391,9 +420,8 @@ void MeshRenderer::wheelEvent(QWheelEvent* event)
     float delta = static_cast<float>(event->angleDelta().y()) / 120.0f;
     zoom_ *= std::pow(0.85f, delta);
     zoom_ = std::max(0.01f, std::min(100.0f, zoom_));
-    // Orthographic zoom requires rebuilding the projection bounds
-    if (projection_mode_ == Orthographic)
-        resizeGL(width(), height());
+    // Rebuild projection — near/far depends on zoom_ in both modes
+    resizeGL(width(), height());
     update();
 }
 

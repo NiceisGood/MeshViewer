@@ -105,6 +105,7 @@ private:
     float rotation_quat_[4] = {1.0f, 0.0f, 0.0f, 0.0f};  // w, x, y, z
     float pan_x_ = 0.0f, pan_y_ = 0.0f;
     float zoom_ = 1.0f;
+    float model_diag_ = 1.0f;  // bounding box diagonal for near/far plane
     int quad_line_count_ = 0;  // number of quad wireframe line indices
 
     // Interaction state
