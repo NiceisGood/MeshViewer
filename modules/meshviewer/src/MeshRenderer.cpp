@@ -109,8 +109,8 @@ void MeshRenderer::resizeGL(int w, int h)
     if (projection_mode_ == Perspective) {
         projection_.perspective(45.0f, aspect, 0.01f, 1000.0f);
     } else {
-        // Orthographic: fit a 3-unit cube centered at origin
-        float size = 1.5f;
+        // Orthographic: scale bounds by zoom_ so zoom wheel works
+        float size = 1.5f / zoom_;
         projection_.ortho(-size * aspect, size * aspect,
                           -size, size,
                           0.01f, 1000.0f);
@@ -293,6 +293,7 @@ void MeshRenderer::setProjectionMode(ProjectionMode mode)
 void MeshRenderer::mousePressEvent(QMouseEvent* event)
 {
     last_mouse_ = event->pos();
+    press_pos_ = event->pos();  // save for arcball reference
     last_button_ = event->button();
     dragging_ = true;
 
@@ -310,8 +311,8 @@ void MeshRenderer::mouseMoveEvent(QMouseEvent* event)
     float dy = static_cast<float>(current.y() - last_mouse_.y());
 
     if (last_button_ == Qt::LeftButton) {
-        // Arcball rotation
-        QVector3D va = arcballVector(last_mouse_);
+        // Arcball rotation — always compute delta from press position
+        QVector3D va = arcballVector(press_pos_);
         QVector3D vb = arcballVector(current);
         float dot = QVector3D::dotProduct(va, vb);
         float angle = std::acos(std::min(1.0f, std::max(-1.0f, dot)));
@@ -352,6 +353,9 @@ void MeshRenderer::wheelEvent(QWheelEvent* event)
     float delta = static_cast<float>(event->angleDelta().y()) / 120.0f;
     zoom_ *= std::pow(0.85f, delta);
     zoom_ = std::max(0.01f, std::min(100.0f, zoom_));
+    // Orthographic zoom requires rebuilding the projection bounds
+    if (projection_mode_ == Orthographic)
+        resizeGL(width(), height());
     update();
 }
 
@@ -386,9 +390,10 @@ void MeshRenderer::paintGL()
     t_neg.translate(-center_);
     model_ = t_center * rot * t_neg;
 
-    // View matrix: camera distance (zoom) + pan in screen space
+    // View matrix: look at mesh center + camera distance (zoom) + pan
     view_.setToIdentity();
     view_.translate(pan_x_, pan_y_, 0.0f);
+    view_.translate(-center_);
     view_.translate(0.0f, 0.0f, -3.0f * zoom_);
 
     QMatrix4x4 mvp = projection_ * view_ * model_;

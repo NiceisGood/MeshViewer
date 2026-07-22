@@ -105,6 +105,7 @@ private:
     // Interaction state
     bool dragging_ = false;
     QPointF last_mouse_;
+    QPointF press_pos_;      // arcball press position (used as va reference)
     int last_button_ = Qt::NoButton;
     float prev_quat_[4] = {1.0f, 0.0f, 0.0f, 0.0f};
 
