@@ -137,7 +137,8 @@ void MeshRenderer::resizeGL(int w, int h)
     // when zoomed out.  near = 1% of diagonal, far = max(100*diag, 2*camera_dist).
     float near_plane = model_diag_ * 0.01f;
     float far_plane = model_diag_ * 100.0f;
-    if (3.0f * zoom_ * 2.0f > far_plane) far_plane = 3.0f * zoom_ * 2.0f;
+    if (3.0f * zoom_ * 4.0f + model_diag_ * 4.0f > far_plane)
+        far_plane = 3.0f * zoom_ * 4.0f + model_diag_ * 4.0f;
     projection_.setToIdentity();
     if (projection_mode_ == Perspective) {
         projection_.perspective(45.0f, aspect, near_plane, far_plane);
@@ -419,7 +420,7 @@ void MeshRenderer::wheelEvent(QWheelEvent* event)
 {
     float delta = static_cast<float>(event->angleDelta().y()) / 120.0f;
     zoom_ *= std::pow(0.85f, delta);
-    zoom_ = std::max(0.01f, std::min(100.0f, zoom_));
+    zoom_ = std::max(model_diag_ / 6.0f, std::min(100.0f, zoom_));
     // Rebuild projection — near/far depends on zoom_ in both modes
     resizeGL(width(), height());
     update();
