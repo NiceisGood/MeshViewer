@@ -135,10 +135,9 @@ void MeshRenderer::resizeGL(int w, int h)
     float aspect = (h > 0) ? static_cast<float>(w) / h : 1.0f;
     // Dynamic near/far based on model size to avoid depth precision issues
     // when zoomed out.  near = 1% of diagonal, far = max(100*diag, 2*camera_dist).
-    float near_plane = model_diag_ * 0.01f;
-    float far_plane = model_diag_ * 100.0f;
-    if (3.0f * zoom_ * 4.0f + model_diag_ * 4.0f > far_plane)
-        far_plane = 3.0f * zoom_ * 4.0f + model_diag_ * 4.0f;
+    float near_plane = (3.0f * zoom_ - model_diag_ * 0.5f) * 0.5f;
+    if (near_plane < 0.001f) near_plane = 0.001f;
+    float far_plane = (3.0f * zoom_ + model_diag_ * 0.5f) * 2.0f;
     projection_.setToIdentity();
     if (projection_mode_ == Perspective) {
         projection_.perspective(45.0f, aspect, near_plane, far_plane);
