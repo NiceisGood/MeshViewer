@@ -336,6 +336,23 @@ bool read_qmesh_3d(const std::string& path, MeshData& out)
         faces.push_back(make_face(tet[0], tet[3], tet[2]));  // opposite v1
     }
 
+    // Version 2+: read optional quad face data BEFORE closing the file
+    std::vector<int> raw_quads;  // temporary storage
+    if (version >= 2) {
+        uint32_t num_quads = 0;
+        if (std::fread(&num_quads, sizeof(num_quads), 1, f) == 1 && num_quads > 0) {
+            raw_quads.reserve(num_quads * 4);
+            for (uint32_t i = 0; i < num_quads; ++i) {
+                int32_t quad[4];
+                if (std::fread(quad, sizeof(int32_t), 4, f) != 4) break;
+                raw_quads.push_back(quad[0]);
+                raw_quads.push_back(quad[1]);
+                raw_quads.push_back(quad[2]);
+                raw_quads.push_back(quad[3]);
+            }
+        }
+    }
+
     std::fclose(f);
 
     // Find boundary faces (those that appear exactly once)
@@ -373,21 +390,12 @@ bool read_qmesh_3d(const std::string& path, MeshData& out)
         }
     }
 
-    // Version 2+: read optional quad face data (for octree cell wireframe)
+    // Copy quad face data from pre-close read
     out.quad_indices.clear();
-    if (version >= 2) {
-        uint32_t num_quads = 0;
-        if (std::fread(&num_quads, sizeof(num_quads), 1, f) == 1 && num_quads > 0) {
-            out.quad_indices.reserve(num_quads * 4);
-            for (uint32_t i = 0; i < num_quads; ++i) {
-                int32_t quad[4];
-                if (std::fread(quad, sizeof(int32_t), 4, f) != 4) break;
-                out.quad_indices.push_back(static_cast<unsigned int>(quad[0]));
-                out.quad_indices.push_back(static_cast<unsigned int>(quad[1]));
-                out.quad_indices.push_back(static_cast<unsigned int>(quad[2]));
-                out.quad_indices.push_back(static_cast<unsigned int>(quad[3]));
-            }
-        }
+    if (!raw_quads.empty()) {
+        out.quad_indices.reserve(raw_quads.size());
+        for (int idx : raw_quads)
+            out.quad_indices.push_back(static_cast<unsigned int>(idx));
     }
 
     return !out.empty();
