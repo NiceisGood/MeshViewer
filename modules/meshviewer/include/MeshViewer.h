@@ -4,6 +4,10 @@
 #include <QMainWindow>
 #include <QLabel>
 #include <QActionGroup>
+#include <QDockWidget>
+#include <QCheckBox>
+#include <QSlider>
+#include <QComboBox>
 
 class MeshRenderer;
 
@@ -27,15 +31,25 @@ private slots:
     void onOpenFile();
     void onMeshInfoChanged(const QString& info);
     void onDisplayModeChanged(QAction* action);
+    void onSliceToggled(bool enabled);
+    void onSlicePosChanged(int value);
+    void onSliceNormalChanged(int index);
+    void onSliceDisplayModeChanged(int index);
 
 private:
     void createMenus();
     void createStatusBar();
+    void createSliceDock();
 
     MeshRenderer* renderer_;
     QLabel* info_label_;
     QActionGroup* display_group_ = nullptr;
     QActionGroup* projection_group_ = nullptr;
+    QDockWidget* slice_dock_ = nullptr;
+    QCheckBox* slice_enable_check_ = nullptr;
+    QSlider* slice_pos_slider_ = nullptr;
+    QComboBox* slice_normal_combo_ = nullptr;
+    QComboBox* slice_display_combo_ = nullptr;
 };
 
 #endif // MESHVIEWER_H

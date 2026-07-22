@@ -39,6 +39,14 @@ public:
     };
     Q_ENUM(ProjectionMode)
 
+    /// Slice display mode enumeration.
+    enum SliceDisplayMode {
+        FullMesh = 0,       ///< Full mesh + contour (default).
+        HalfMesh,           ///< Keep one half of mesh + contour.
+        ContourOnly         ///< Hide mesh, show only slice contour.
+    };
+    Q_ENUM(SliceDisplayMode)
+
     explicit MeshRenderer(QWidget* parent = nullptr);
     ~MeshRenderer();
 
@@ -62,6 +70,26 @@ public:
     /// Get the current mesh info string.
     QString meshInfo() const;
 
+    // ---- Slice plane ----------------------------------------------------
+    /// Enable/disable slice contour rendering.
+    void setSliceEnabled(bool enabled) { slice_enabled_ = enabled; update(); }
+    bool sliceEnabled() const { return slice_enabled_; }
+
+    /// Set slice plane position (distance along normal in model space).
+    void setSlicePosition(float pos);
+    float slicePosition() const { return slice_pos_; }
+
+    /// Set slice plane normal direction (unit vector in model space).
+    void setSliceNormal(const QVector3D& n);
+    QVector3D sliceNormal() const { return slice_normal_; }
+
+    /// Get the model-space bounding diagonal (for UI range mapping).
+    float modelDiagonal() const { return model_diag_; }
+
+    /// Set slice display mode (ContourOnly / HalfMesh / FullMesh).
+    void setSliceDisplayMode(SliceDisplayMode mode) { slice_display_mode_ = mode; update(); }
+    SliceDisplayMode sliceDisplayMode() const { return slice_display_mode_; }
+
 signals:
     void meshInfoChanged(const QString& info);
 
@@ -78,6 +106,10 @@ protected:
 private:
     void setupShaders();
     void buildBuffers();
+
+    // Slice contour computation
+    void computeSliceContour();
+    void buildSliceBuffers();
 
     // Arcball helpers
     QVector3D arcballVector(const QPointF& p) const;
@@ -119,6 +151,16 @@ private:
     DisplayMode display_mode_ = Solid;
     ProjectionMode projection_mode_ = Orthographic;
     bool initialized_ = false;
+
+    // Slice plane
+    bool slice_enabled_ = false;
+    float slice_pos_ = 0.0f;
+    QVector3D slice_normal_{0.0f, 0.0f, 1.0f};
+    SliceDisplayMode slice_display_mode_ = FullMesh;
+    bool slice_dirty_ = true;
+    std::vector<float> slice_contour_verts_;  // computed contour line vertices
+    GLuint slice_vao_ = 0;
+    GLuint slice_vbo_ = 0;
 };
 
 #endif // MESHRENDERER_H

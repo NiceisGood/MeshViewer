@@ -26,6 +26,8 @@ MeshRenderer::~MeshRenderer()
     if (ebo_) glDeleteBuffers(1, &ebo_);
     if (wireframe_ebo_) glDeleteBuffers(1, &wireframe_ebo_);
     if (quad_ebo_) glDeleteBuffers(1, &quad_ebo_);
+    if (slice_vao_) glDeleteVertexArrays(1, &slice_vao_);
+    if (slice_vbo_) glDeleteBuffers(1, &slice_vbo_);
     delete shader_;
     delete wire_shader_;
     doneCurrent();
@@ -64,6 +66,7 @@ void MeshRenderer::loadMesh(const MeshData& mesh)
         if (model_diag_ < 1e-6f) model_diag_ = 1.0f;
     }
     resetView();
+    slice_dirty_ = true;
     if (initialized_) {
         makeCurrent();
         buildBuffers();
@@ -120,6 +123,8 @@ void MeshRenderer::initializeGL()
     glGenBuffers(1, &ebo_);
     glGenBuffers(1, &wireframe_ebo_);
     glGenBuffers(1, &quad_ebo_);
+    glGenVertexArrays(1, &slice_vao_);
+    glGenBuffers(1, &slice_vbo_);
 
     if (!mesh_.empty())
         buildBuffers();
@@ -162,8 +167,10 @@ void MeshRenderer::setupShaders()
 #version 330 core
 layout(location = 0) in vec3 aPos;
 uniform mat4 uMVP;
+uniform vec4 uClipPlane;
 void main() {
     gl_Position = uMVP * vec4(aPos, 1.0);
+    gl_ClipDistance[0] = dot(uClipPlane, vec4(aPos, 1.0));
 }
 )";
         const char* fs_src = R"(
@@ -192,8 +199,10 @@ void main() {
 #version 330 core
 layout(location = 0) in vec3 aPos;
 uniform mat4 uMVP;
+uniform vec4 uClipPlane;
 void main() {
     gl_Position = uMVP * vec4(aPos, 1.0);
+    gl_ClipDistance[0] = dot(uClipPlane, vec4(aPos, 1.0));
 }
 )";
         const char* fs_src = R"(
@@ -359,6 +368,127 @@ void MeshRenderer::setProjectionMode(ProjectionMode mode)
 }
 
 // =======================================================================
+//  Slice plane
+// =======================================================================
+
+void MeshRenderer::setSlicePosition(float pos)
+{
+    slice_pos_ = pos;
+    slice_dirty_ = true;
+    update();
+}
+
+void MeshRenderer::setSliceNormal(const QVector3D& n)
+{
+    slice_normal_ = n;
+    slice_dirty_ = true;
+    update();
+}
+
+void MeshRenderer::computeSliceContour()
+{
+    slice_contour_verts_.clear();
+
+    if (mesh_.indices.empty()) return;
+
+    const float* verts = mesh_.vertices.data();
+    const float nx = slice_normal_.x();
+    const float ny = slice_normal_.y();
+    const float nz = slice_normal_.z();
+    const float d  = slice_pos_;  // plane: dot(n, v) == d
+
+    // Temporary buffer for line segments (6 floats per segment = 2 vertices)
+    std::vector<float> segments;
+    segments.reserve(mesh_.indices.size() / 3 * 6);  // upper bound
+
+    for (size_t i = 0; i < mesh_.indices.size(); i += 3) {
+        unsigned int ia = mesh_.indices[i];
+        unsigned int ib = mesh_.indices[i + 1];
+        unsigned int ic = mesh_.indices[i + 2];
+
+        // Vertex positions
+        float ax = verts[ia * 3],     ay = verts[ia * 3 + 1], az = verts[ia * 3 + 2];
+        float bx = verts[ib * 3],     by = verts[ib * 3 + 1], bz = verts[ib * 3 + 2];
+        float cx = verts[ic * 3],     cy = verts[ic * 3 + 1], cz = verts[ic * 3 + 2];
+
+        // Signed distances to plane (positive = above/near normal direction)
+        float da = nx * ax + ny * ay + nz * az - d;
+        float db = nx * bx + ny * by + nz * bz - d;
+        float dc = nx * cx + ny * cy + nz * cz - d;
+
+        // Quick skip if all same sign (no intersection)
+        bool a_pos = (da >= 0.0f);
+        bool b_pos = (db >= 0.0f);
+        bool c_pos = (dc >= 0.0f);
+        int pos_count = (a_pos ? 1 : 0) + (b_pos ? 1 : 0) + (c_pos ? 1 : 0);
+        if (pos_count == 0 || pos_count == 3)
+            continue;
+
+        // Lambda: intersect edge v0->v1, store the intersection point
+        auto intersect_edge = [&](float v0x, float v0y, float v0z, float d0,
+                                   float v1x, float v1y, float v1z, float d1) {
+            // Edge crosses plane when d0 and d1 have opposite signs
+            float t = d0 / (d0 - d1);  // lerp factor
+            segments.push_back(v0x + t * (v1x - v0x));
+            segments.push_back(v0y + t * (v1y - v0y));
+            segments.push_back(v0z + t * (v1z - v0z));
+        };
+
+        // Collect crossing edges — always exactly 2 intersection points
+        // (one edge has the solo vertex on one side)
+        if (pos_count == 1) {
+            // One vertex on positive side, two on negative → 2 intersecions
+            if (a_pos) {
+                intersect_edge(ax, ay, az, da, bx, by, bz, db);
+                intersect_edge(ax, ay, az, da, cx, cy, cz, dc);
+            } else if (b_pos) {
+                intersect_edge(bx, by, bz, db, ax, ay, az, da);
+                intersect_edge(bx, by, bz, db, cx, cy, cz, dc);
+            } else {
+                intersect_edge(cx, cy, cz, dc, ax, ay, az, da);
+                intersect_edge(cx, cy, cz, dc, bx, by, bz, db);
+            }
+        } else {
+            // Two vertices on positive side, one on negative → 2 intersections
+            // (still 2 intersection points, on the 2 edges from the solo vertex)
+            if (!a_pos) {
+                intersect_edge(ax, ay, az, da, bx, by, bz, db);
+                intersect_edge(ax, ay, az, da, cx, cy, cz, dc);
+            } else if (!b_pos) {
+                intersect_edge(bx, by, bz, db, ax, ay, az, da);
+                intersect_edge(bx, by, bz, db, cx, cy, cz, dc);
+            } else {
+                intersect_edge(cx, cy, cz, dc, ax, ay, az, da);
+                intersect_edge(cx, cy, cz, dc, bx, by, bz, db);
+            }
+        }
+    }
+
+    slice_contour_verts_.swap(segments);
+}
+
+void MeshRenderer::buildSliceBuffers()
+{
+    if (slice_contour_verts_.empty()) {
+        glBindVertexArray(slice_vao_);
+        glBindBuffer(GL_ARRAY_BUFFER, slice_vbo_);
+        glBufferData(GL_ARRAY_BUFFER, 0, nullptr, GL_DYNAMIC_DRAW);
+        glBindVertexArray(0);
+        return;
+    }
+
+    glBindVertexArray(slice_vao_);
+    glBindBuffer(GL_ARRAY_BUFFER, slice_vbo_);
+    glBufferData(GL_ARRAY_BUFFER,
+                 slice_contour_verts_.size() * sizeof(float),
+                 slice_contour_verts_.data(),
+                 GL_DYNAMIC_DRAW);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), nullptr);
+    glEnableVertexAttribArray(0);
+    glBindVertexArray(0);
+}
+
+// =======================================================================
 //  Mouse / wheel events
 // =======================================================================
 
@@ -469,7 +599,24 @@ void MeshRenderer::paintGL()
 
     QMatrix4x4 mvp = projection_ * view_ * model_;
 
-    const bool draw_solid = (display_mode_ == Solid || display_mode_ == WireframeSolid || display_mode_ == QuadWireframeSolid);
+    // ---- Slice plane: clip distance setup (for HalfMesh mode) ----
+    if (slice_enabled_ && slice_display_mode_ == HalfMesh) {
+        glEnable(GL_CLIP_DISTANCE0);
+        QVector4D clip_plane(slice_normal_.x(), slice_normal_.y(),
+                             slice_normal_.z(), -slice_pos_);
+        shader_->bind();
+        shader_->setUniformValue("uClipPlane", clip_plane);
+        shader_->release();
+        wire_shader_->bind();
+        wire_shader_->setUniformValue("uClipPlane", clip_plane);
+        wire_shader_->release();
+    } else {
+        glDisable(GL_CLIP_DISTANCE0);
+    }
+
+    // --- Solid fill (skip for ContourOnly) ---
+    const bool draw_solid = (display_mode_ == Solid || display_mode_ == WireframeSolid || display_mode_ == QuadWireframeSolid)
+                            && slice_display_mode_ != ContourOnly;
     const bool draw_wire = (display_mode_ == Wireframe || display_mode_ == WireframeSolid);
     const bool draw_quad_wire = (display_mode_ == QuadWireframe || display_mode_ == QuadWireframeSolid) && quad_line_count_ > 0;
 
@@ -523,5 +670,28 @@ void MeshRenderer::paintGL()
                        GL_UNSIGNED_INT, nullptr);
         glBindVertexArray(0);
         wire_shader_->release();
+    }
+
+    // ---- Slice contour overlay (always on top when slice is enabled) ----
+    if (slice_enabled_) {
+        // Recompute contour if parameters changed
+        if (slice_dirty_) {
+            computeSliceContour();
+            buildSliceBuffers();
+            slice_dirty_ = false;
+        }
+
+        if (!slice_contour_verts_.empty()) {
+            wire_shader_->bind();
+            wire_shader_->setUniformValue("uMVP", mvp);
+            wire_shader_->setUniformValue("uColor", QVector3D(1.0f, 0.3f, 0.1f));  // bright orange-red
+
+            glLineWidth(3.0f);
+            glBindVertexArray(slice_vao_);
+            glDrawArrays(GL_LINES, 0,
+                         static_cast<int>(slice_contour_verts_.size() / 3));
+            glBindVertexArray(0);
+            wire_shader_->release();
+        }
     }
 }
