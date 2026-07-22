@@ -420,7 +420,7 @@ void MeshRenderer::wheelEvent(QWheelEvent* event)
 {
     float delta = static_cast<float>(event->angleDelta().y()) / 120.0f;
     zoom_ *= std::pow(0.85f, delta);
-    zoom_ = std::max(model_diag_ / 6.0f, std::min(100.0f, zoom_));
+    zoom_ = std::max(0.01f, std::min(100.0f, zoom_));
     // Rebuild projection — near/far depends on zoom_ in both modes
     resizeGL(width(), height());
     update();
