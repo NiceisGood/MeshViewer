@@ -103,6 +103,7 @@ void MeshRenderer::initializeGL()
     initializeOpenGLFunctions();
     glClearColor(0.15f, 0.15f, 0.18f, 1.0f);
     glEnable(GL_DEPTH_TEST);
+    glDepthFunc(GL_LEQUAL);  // avoid z-fighting on co-planar triangles
     glEnable(GL_CULL_FACE);
     glCullFace(GL_BACK);
     glFrontFace(GL_CCW);
