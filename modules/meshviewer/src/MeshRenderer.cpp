@@ -103,10 +103,13 @@ void MeshRenderer::initializeGL()
     initializeOpenGLFunctions();
     glClearColor(0.15f, 0.15f, 0.18f, 1.0f);
     glEnable(GL_DEPTH_TEST);
-    glDepthFunc(GL_LEQUAL);  // avoid z-fighting on co-planar triangles
-    glEnable(GL_CULL_FACE);
-    glCullFace(GL_BACK);
-    glFrontFace(GL_CCW);
+    glDepthFunc(GL_LEQUAL);
+    // Note: glCullFace intentionally disabled — the 6-tet decomposition
+    // produces tetrahedron faces with mixed winding on each cube face.
+    // One triangle per face is CW (culled) and the other is CCW (visible),
+    // causing holes when zoomed out.  Depth test handles occlusion correctly
+    // for closed 2-manifold surfaces without culling.
+    glDisable(GL_CULL_FACE);
 
     setupShaders();
 
