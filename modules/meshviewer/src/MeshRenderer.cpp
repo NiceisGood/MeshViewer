@@ -397,69 +397,96 @@ void MeshRenderer::computeSliceContour()
     const float nz = slice_normal_.z();
     const float d  = slice_pos_;  // plane: dot(n, v) == d
 
-    // Temporary buffer for line segments (6 floats per segment = 2 vertices)
     std::vector<float> segments;
-    segments.reserve(mesh_.indices.size() / 3 * 6);  // upper bound
+    segments.reserve(mesh_.indices.size() / 3 * 6);
 
-    for (size_t i = 0; i < mesh_.indices.size(); i += 3) {
-        unsigned int ia = mesh_.indices[i];
-        unsigned int ib = mesh_.indices[i + 1];
-        unsigned int ic = mesh_.indices[i + 2];
+    // Lambda: intersect edge v0->v1 given signed distances d0, d1
+    auto intersect_edge = [&](unsigned int i0, unsigned int i1,
+                               float d0, float d1) {
+        float v0x = verts[i0 * 3],     v0y = verts[i0 * 3 + 1], v0z = verts[i0 * 3 + 2];
+        float v1x = verts[i1 * 3],     v1y = verts[i1 * 3 + 1], v1z = verts[i1 * 3 + 2];
+        float t = d0 / (d0 - d1);
+        segments.push_back(v0x + t * (v1x - v0x));
+        segments.push_back(v0y + t * (v1y - v0y));
+        segments.push_back(v0z + t * (v1z - v0z));
+    };
 
-        // Vertex positions
-        float ax = verts[ia * 3],     ay = verts[ia * 3 + 1], az = verts[ia * 3 + 2];
-        float bx = verts[ib * 3],     by = verts[ib * 3 + 1], bz = verts[ib * 3 + 2];
-        float cx = verts[ic * 3],     cy = verts[ic * 3 + 1], cz = verts[ic * 3 + 2];
+    if (!mesh_.quad_indices.empty()) {
+        // ---- Quad-based contour (octree cell faces) ----
+        for (size_t i = 0; i < mesh_.quad_indices.size(); i += 4) {
+            unsigned int ia = mesh_.quad_indices[i];
+            unsigned int ib = mesh_.quad_indices[i + 1];
+            unsigned int ic = mesh_.quad_indices[i + 2];
+            unsigned int id = mesh_.quad_indices[i + 3];
 
-        // Signed distances to plane (positive = above/near normal direction)
-        float da = nx * ax + ny * ay + nz * az - d;
-        float db = nx * bx + ny * by + nz * bz - d;
-        float dc = nx * cx + ny * cy + nz * cz - d;
+            float da = nx * verts[ia * 3]     + ny * verts[ia * 3 + 1] + nz * verts[ia * 3 + 2] - d;
+            float db = nx * verts[ib * 3]     + ny * verts[ib * 3 + 1] + nz * verts[ib * 3 + 2] - d;
+            float dc = nx * verts[ic * 3]     + ny * verts[ic * 3 + 1] + nz * verts[ic * 3 + 2] - d;
+            float dd = nx * verts[id * 3]     + ny * verts[id * 3 + 1] + nz * verts[id * 3 + 2] - d;
 
-        // Quick skip if all same sign (no intersection)
-        bool a_pos = (da >= 0.0f);
-        bool b_pos = (db >= 0.0f);
-        bool c_pos = (dc >= 0.0f);
-        int pos_count = (a_pos ? 1 : 0) + (b_pos ? 1 : 0) + (c_pos ? 1 : 0);
-        if (pos_count == 0 || pos_count == 3)
-            continue;
+            // Count which side each vertex is on
+            bool a_pos = (da >= 0.0f), b_pos = (db >= 0.0f);
+            bool c_pos = (dc >= 0.0f), d_pos = (dd >= 0.0f);
+            int pos_count = (a_pos ? 1 : 0) + (b_pos ? 1 : 0) +
+                            (c_pos ? 1 : 0) + (d_pos ? 1 : 0);
+            if (pos_count == 0 || pos_count == 4)
+                continue;
 
-        // Lambda: intersect edge v0->v1, store the intersection point
-        auto intersect_edge = [&](float v0x, float v0y, float v0z, float d0,
-                                   float v1x, float v1y, float v1z, float d1) {
-            // Edge crosses plane when d0 and d1 have opposite signs
-            float t = d0 / (d0 - d1);  // lerp factor
-            segments.push_back(v0x + t * (v1x - v0x));
-            segments.push_back(v0y + t * (v1y - v0y));
-            segments.push_back(v0z + t * (v1z - v0z));
-        };
+            // Check each of the 4 edges
+            // For a quad crossing, typically 2 edges cross → 1 segment
+            // (occasionally 4 edges cross → 2 segments)
+            struct Edge { unsigned int i0, i1; float d0, d1; } edges[4] = {
+                {ia, ib, da, db}, {ib, ic, db, dc},
+                {ic, id, dc, dd}, {id, ia, dd, da}
+            };
 
-        // Collect crossing edges — always exactly 2 intersection points
-        // (one edge has the solo vertex on one side)
-        if (pos_count == 1) {
-            // One vertex on positive side, two on negative → 2 intersecions
-            if (a_pos) {
-                intersect_edge(ax, ay, az, da, bx, by, bz, db);
-                intersect_edge(ax, ay, az, da, cx, cy, cz, dc);
-            } else if (b_pos) {
-                intersect_edge(bx, by, bz, db, ax, ay, az, da);
-                intersect_edge(bx, by, bz, db, cx, cy, cz, dc);
-            } else {
-                intersect_edge(cx, cy, cz, dc, ax, ay, az, da);
-                intersect_edge(cx, cy, cz, dc, bx, by, bz, db);
+            for (int e = 0; e < 4; ++e) {
+                auto& edge = edges[e];
+                // Edge crosses plane if signs differ (allow zero on either side
+                // for robustness, but only emit when one side is clearly positive
+                // and the other clearly negative)
+                if ((edge.d0 > 0.0f && edge.d1 < 0.0f) ||
+                    (edge.d0 < 0.0f && edge.d1 > 0.0f)) {
+                    intersect_edge(edge.i0, edge.i1, edge.d0, edge.d1);
+                }
             }
-        } else {
-            // Two vertices on positive side, one on negative → 2 intersections
-            // (still 2 intersection points, on the 2 edges from the solo vertex)
-            if (!a_pos) {
-                intersect_edge(ax, ay, az, da, bx, by, bz, db);
-                intersect_edge(ax, ay, az, da, cx, cy, cz, dc);
-            } else if (!b_pos) {
-                intersect_edge(bx, by, bz, db, ax, ay, az, da);
-                intersect_edge(bx, by, bz, db, cx, cy, cz, dc);
+        }
+    } else {
+        // ---- Triangle-based contour (fallback) ----
+        for (size_t i = 0; i < mesh_.indices.size(); i += 3) {
+            unsigned int ia = mesh_.indices[i];
+            unsigned int ib = mesh_.indices[i + 1];
+            unsigned int ic = mesh_.indices[i + 2];
+
+            float ax = verts[ia * 3],     ay = verts[ia * 3 + 1], az = verts[ia * 3 + 2];
+            float bx = verts[ib * 3],     by = verts[ib * 3 + 1], bz = verts[ib * 3 + 2];
+            float cx = verts[ic * 3],     cy = verts[ic * 3 + 1], cz = verts[ic * 3 + 2];
+
+            float da = nx * ax + ny * ay + nz * az - d;
+            float db = nx * bx + ny * by + nz * bz - d;
+            float dc = nx * cx + ny * cy + nz * cz - d;
+
+            bool a_pos = (da >= 0.0f), b_pos = (db >= 0.0f), c_pos = (dc >= 0.0f);
+            int pos_count = (a_pos ? 1 : 0) + (b_pos ? 1 : 0) + (c_pos ? 1 : 0);
+            if (pos_count == 0 || pos_count == 3)
+                continue;
+
+            // Exactly 2 intersection points: the 2 edges from the solo vertex
+            auto do_tri = [&](unsigned int solo_i, float solo_d,
+                              unsigned int n1_i, float n1_d,
+                              unsigned int n2_i, float n2_d) {
+                intersect_edge(solo_i, n1_i, solo_d, n1_d);
+                intersect_edge(solo_i, n2_i, solo_d, n2_d);
+            };
+
+            if (pos_count == 1) {
+                if (a_pos)      do_tri(ia, da, ib, db, ic, dc);
+                else if (b_pos) do_tri(ib, db, ia, da, ic, dc);
+                else            do_tri(ic, dc, ia, da, ib, db);
             } else {
-                intersect_edge(cx, cy, cz, dc, ax, ay, az, da);
-                intersect_edge(cx, cy, cz, dc, bx, by, bz, db);
+                if (!a_pos)     do_tri(ia, da, ib, db, ic, dc);
+                else if (!b_pos) do_tri(ib, db, ia, da, ic, dc);
+                else            do_tri(ic, dc, ia, da, ib, db);
             }
         }
     }

@@ -14,6 +14,7 @@
 #include <QComboBox>
 #include <QApplication>
 #include <QDockWidget>
+#include <QGroupBox>
 #include <QHBoxLayout>
 #include <QLabel>
 
@@ -157,6 +158,20 @@ void MeshViewer::createMenus()
 
     view_menu->addSeparator();
 
+    // Slice plane toggle
+    slice_act_ = view_menu->addAction(QStringLiteral("&Slice Plane..."));
+    slice_act_->setCheckable(true);
+    slice_act_->setChecked(false);
+    slice_act_->setShortcut(QKeySequence(Qt::Key_S));
+    connect(slice_act_, &QAction::triggered, [this](bool checked) {
+        slice_dock_->setVisible(checked);
+        if (!checked && slice_enable_check_->isChecked()) {
+            slice_enable_check_->setChecked(false); // disable slice too
+        }
+    });
+
+    view_menu->addSeparator();
+
     QAction* reset_act = view_menu->addAction(QStringLiteral("&Reset View"));
     reset_act->setShortcut(QKeySequence(Qt::Key_R));
     connect(reset_act, &QAction::triggered, [this]() {
@@ -217,35 +232,48 @@ void MeshViewer::createSliceDock()
 {
     slice_dock_ = new QDockWidget(QStringLiteral("Slice Plane"), this);
     slice_dock_->setObjectName(QStringLiteral("SliceDock"));
+    slice_dock_->setFeatures(QDockWidget::DockWidgetClosable |
+                             QDockWidget::DockWidgetMovable);
+    slice_dock_->setVisible(false);  // hidden by default
 
     QWidget* container = new QWidget;
 
     QVBoxLayout* layout = new QVBoxLayout(container);
-    layout->setContentsMargins(6, 6, 6, 6);
-    layout->setSpacing(4);
+    layout->setContentsMargins(8, 8, 8, 8);
+    layout->setSpacing(8);
 
-    // Enable/disable checkbox
+    // ── Enable / disable ──
     slice_enable_check_ = new QCheckBox(QStringLiteral("Enable Slice"));
     slice_enable_check_->setChecked(false);
     connect(slice_enable_check_, &QCheckBox::toggled,
             this, &MeshViewer::onSliceToggled);
     layout->addWidget(slice_enable_check_);
 
-    // Slice position slider (normalized to [-1, 1])
+    // ── Plane Settings group ──
+    QGroupBox* plane_group = new QGroupBox(QStringLiteral("Plane Settings"));
+    QVBoxLayout* plane_layout = new QVBoxLayout(plane_group);
+    plane_layout->setContentsMargins(6, 10, 6, 6);
+    plane_layout->setSpacing(6);
+
+    // Position row
     QHBoxLayout* pos_row = new QHBoxLayout;
-    pos_row->addWidget(new QLabel(QStringLiteral("Position:")));
+    QLabel* pos_label = new QLabel(QStringLiteral("Position:"));
+    pos_label->setFixedWidth(60);
+    pos_row->addWidget(pos_label);
     slice_pos_slider_ = new QSlider(Qt::Horizontal);
     slice_pos_slider_->setRange(-100, 100);
     slice_pos_slider_->setValue(0);
-    slice_pos_slider_->setEnabled(false);  // disabled until slice is enabled
+    slice_pos_slider_->setEnabled(false);
     connect(slice_pos_slider_, &QSlider::valueChanged,
             this, &MeshViewer::onSlicePosChanged);
     pos_row->addWidget(slice_pos_slider_);
-    layout->addLayout(pos_row);
+    plane_layout->addLayout(pos_row);
 
-    // Slice normal direction
+    // Normal row
     QHBoxLayout* normal_row = new QHBoxLayout;
-    normal_row->addWidget(new QLabel(QStringLiteral("Normal:")));
+    QLabel* normal_label = new QLabel(QStringLiteral("Normal:"));
+    normal_label->setFixedWidth(60);
+    normal_row->addWidget(normal_label);
     slice_normal_combo_ = new QComboBox;
     slice_normal_combo_->addItem(QStringLiteral("+Z (front)"));
     slice_normal_combo_->addItem(QStringLiteral("-Z (back)"));
@@ -254,28 +282,52 @@ void MeshViewer::createSliceDock()
     slice_normal_combo_->addItem(QStringLiteral("+X (right)"));
     slice_normal_combo_->addItem(QStringLiteral("-X (left)"));
     slice_normal_combo_->setEnabled(false);
+    slice_normal_combo_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     connect(slice_normal_combo_, QOverload<int>::of(&QComboBox::currentIndexChanged),
             this, &MeshViewer::onSliceNormalChanged);
     normal_row->addWidget(slice_normal_combo_);
-    layout->addLayout(normal_row);
+    plane_layout->addLayout(normal_row);
 
-    // Slice display mode
+    plane_group->setLayout(plane_layout);
+    layout->addWidget(plane_group);
+
+    // ── Display group ──
+    QGroupBox* display_group = new QGroupBox(QStringLiteral("Display"));
+    QVBoxLayout* display_layout = new QVBoxLayout(display_group);
+    display_layout->setContentsMargins(6, 10, 6, 6);
+
     QHBoxLayout* mode_row = new QHBoxLayout;
-    mode_row->addWidget(new QLabel(QStringLiteral("Display:")));
+    QLabel* mode_label = new QLabel(QStringLiteral("Mode:"));
+    mode_label->setFixedWidth(60);
+    mode_row->addWidget(mode_label);
     slice_display_combo_ = new QComboBox;
     slice_display_combo_->addItem(QStringLiteral("Full Mesh + Contour"));
     slice_display_combo_->addItem(QStringLiteral("Half Mesh + Contour"));
     slice_display_combo_->addItem(QStringLiteral("Contour Only"));
-    slice_display_combo_->setCurrentIndex(0);  // FullMesh
+    slice_display_combo_->setCurrentIndex(0);
     slice_display_combo_->setEnabled(false);
+    slice_display_combo_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     connect(slice_display_combo_, QOverload<int>::of(&QComboBox::currentIndexChanged),
             this, &MeshViewer::onSliceDisplayModeChanged);
     mode_row->addWidget(slice_display_combo_);
-    layout->addLayout(mode_row);
+    display_layout->addLayout(mode_row);
+
+    display_group->setLayout(display_layout);
+    layout->addWidget(display_group);
+
+    layout->addStretch(1);
 
     container->setLayout(layout);
     slice_dock_->setWidget(container);
     addDockWidget(Qt::RightDockWidgetArea, slice_dock_);
+
+    // Close dock → auto-disable slice
+    connect(slice_dock_, &QDockWidget::visibilityChanged, [this](bool visible) {
+        slice_act_->setChecked(visible);
+        if (!visible && slice_enable_check_->isChecked()) {
+            slice_enable_check_->setChecked(false);
+        }
+    });
 
     // Default: +Z normal
     renderer_->setSliceNormal(QVector3D(0.0f, 0.0f, 1.0f));

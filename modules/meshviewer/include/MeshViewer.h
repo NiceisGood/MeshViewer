@@ -8,6 +8,7 @@
 #include <QCheckBox>
 #include <QSlider>
 #include <QComboBox>
+#include <QAction>
 
 class MeshRenderer;
 
@@ -45,6 +46,7 @@ private:
     QLabel* info_label_;
     QActionGroup* display_group_ = nullptr;
     QActionGroup* projection_group_ = nullptr;
+    QAction* slice_act_ = nullptr;       // View → Slice toggle action
     QDockWidget* slice_dock_ = nullptr;
     QCheckBox* slice_enable_check_ = nullptr;
     QSlider* slice_pos_slider_ = nullptr;
