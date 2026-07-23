@@ -25,12 +25,16 @@ target_include_directories(meshviewer PRIVATE
     ${CMAKE_SOURCE_DIR}/modules/meshutils/include
     ${CMAKE_SOURCE_DIR}/modules/quadtree/include
     ${CMAKE_SOURCE_DIR}/modules/octree/include
+    ${CMAKE_SOURCE_DIR}/modules/geometry/include
 )
 
 target_link_libraries(meshviewer PRIVATE
     Qt5::Widgets
     Qt5::OpenGL
     octree
+    geometry
+    delaunay2d
+    delaunay3d
 )
 
 # Place the executable alongside other test binaries

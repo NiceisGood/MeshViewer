@@ -15,6 +15,7 @@ delaunay/
 │   ├── quadtree/           #   自适应四叉树网格生成
 │   ├── octree/             #   自适应八叉树 3D 网格生成
 │   ├── meshutils/          #   网格统计、质量优化、导出（OBJ/STL/VTK）
+│   ├── geometry/           #   离散几何模型 I/O 和数据表示（STL/OBJ 导入导出）
 │   ├── meshviewer/         #   Qt5 + OpenGL 3.3 网格可视化
 │   └── benchmark/          #   性能基准测试
 │

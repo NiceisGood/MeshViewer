@@ -9,8 +9,10 @@
 #include <QSlider>
 #include <QComboBox>
 #include <QAction>
+#include <QString>
 
 class MeshRenderer;
+class Geometry;
 
 // -----------------------------------------------------------------------
 // MeshViewer — main window with menu bar, status bar, and OpenGL view.
@@ -30,6 +32,8 @@ public:
 
 private slots:
     void onOpenFile();
+    void onImportFile();
+    void onExportFile();
     void onMeshInfoChanged(const QString& info);
     void onDisplayModeChanged(QAction* action);
     void onSliceToggled(bool enabled);
@@ -37,12 +41,24 @@ private slots:
     void onSliceNormalChanged(int index);
     void onSliceDisplayModeChanged(int index);
 
+    // ── Delaunay slots ──
+    void onDelaunay2D();
+    void onDelaunay2DOptimize();
+    void onDelaunay3DSurface();
+    void onDelaunay3DVolume();
+    void onDelaunay3DSurfaceOptimize();
+    void onDelaunay3DVolumeOptimize();
+
 private:
     void createMenus();
     void createStatusBar();
     void createSliceDock();
 
+    /// Load a mesh from a Geometry object for display.
+    void loadGeometry(const Geometry& geom);
+
     MeshRenderer* renderer_;
+    Geometry* geometry_ = nullptr;  // current geometry data (owned)
     QLabel* info_label_;
     QActionGroup* display_group_ = nullptr;
     QActionGroup* projection_group_ = nullptr;

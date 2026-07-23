@@ -35,6 +35,14 @@ target_link_libraries(test_octree_diagnostic PRIVATE octree meshutils)
 add_executable(test_octree_from_stl test_octree_from_stl.cpp)
 target_link_libraries(test_octree_from_stl PRIVATE octree meshutils)
 
+# End-to-end test: STL → Delaunay2D (simulates MeshViewer::onDelaunay2D)
+add_executable(test_stl_to_delaunay2d test_stl_to_delaunay2d.cpp)
+target_link_libraries(test_stl_to_delaunay2d PRIVATE delaunay2d)
+
+# Test: 2D Delaunay optimization via Laplacian smoothing
+add_executable(test_delaunay2d_opt test_delaunay2d_opt.cpp)
+target_link_libraries(test_delaunay2d_opt PRIVATE delaunay2d meshutils)
+
 # Qt5 minimal smoke test (verifies MSVC Qt5 toolchain works)
 find_package(Qt5 COMPONENTS Widgets QUIET)
 if(Qt5_FOUND)
