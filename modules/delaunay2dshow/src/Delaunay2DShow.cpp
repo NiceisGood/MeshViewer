@@ -13,9 +13,6 @@
 #include <QSplitter>
 #include <QStatusBar>
 #include <QDoubleValidator>
-#include <QMessageBox>
-#include <QCloseEvent>
-#include <QApplication>
 
 #include <cstdio>
 
@@ -44,79 +41,86 @@ Delaunay2DShow::~Delaunay2DShow() = default;
 
 void Delaunay2DShow::buildUI()
 {
-    // ── Central widget: horizontal split ──
-    QSplitter* splitter = new QSplitter(Qt::Horizontal, this);
+    // ── Canvas as central widget, controls float on top ──
+    canvas_ = new DelaunayCanvas;
+    setCentralWidget(canvas_);
 
-    // ── Left side: canvas ──
-    QWidget* left_panel = new QWidget;
-    QVBoxLayout* left_layout = new QVBoxLayout(left_panel);
-    left_layout->setContentsMargins(4, 4, 4, 4);
+    // Layout on canvas positions child widgets on top of the drawing area
+    QVBoxLayout* canvas_layout = new QVBoxLayout(canvas_);
+    canvas_layout->setContentsMargins(8, 8, 8, 8);
 
-    // Toolbar row: Add Point button + X/Y inputs
-    QHBoxLayout* toolbar = new QHBoxLayout;
+    // ── Top row: Add Point tools (left) + checkboxes (right) ──
+    QHBoxLayout* top_row = new QHBoxLayout;
 
+    // Left: Add Point button + X/Y inputs (floating toolbar)
     QPushButton* add_btn = new QPushButton(QStringLiteral("Add Point"));
     add_btn->setToolTip(QStringLiteral("Add point at the specified coordinates"));
+    add_btn->setStyleSheet(QStringLiteral(
+        "QPushButton { background: rgba(255,255,255,220); border: 1px solid #999;"
+        "  border-radius: 4px; padding: 4px 12px; }"
+        "QPushButton:hover { background: rgba(220,235,255,240); }"));
     connect(add_btn, &QPushButton::clicked, this, &Delaunay2DShow::onAddPoint);
-    toolbar->addWidget(add_btn);
+    top_row->addWidget(add_btn);
 
-    QLabel* x_label = new QLabel(QStringLiteral("X:"));
-    toolbar->addWidget(x_label);
+    auto make_input = [](QLineEdit*& input, const QString& placeholder) {
+        input = new QLineEdit;
+        input->setPlaceholderText(placeholder);
+        input->setValidator(new QDoubleValidator(input));
+        input->setMaximumWidth(80);
+        input->setStyleSheet(QStringLiteral(
+            "QLineEdit { background: rgba(255,255,255,220); border: 1px solid #aaa;"
+            "  border-radius: 3px; padding: 3px 6px; }"));
+    };
 
-    x_input_ = new QLineEdit;
-    x_input_->setPlaceholderText(QStringLiteral("0.0"));
-    x_input_->setValidator(new QDoubleValidator(x_input_));
-    x_input_->setMaximumWidth(80);
-    toolbar->addWidget(x_input_);
+    QLabel* x_label = new QLabel(QStringLiteral(" X:"));
+    x_label->setStyleSheet(QStringLiteral("background: transparent; font-weight: bold;"));
+    top_row->addWidget(x_label);
 
-    QLabel* y_label = new QLabel(QStringLiteral("Y:"));
-    toolbar->addWidget(y_label);
+    make_input(x_input_, QStringLiteral("0.0"));
+    top_row->addWidget(x_input_);
 
-    y_input_ = new QLineEdit;
-    y_input_->setPlaceholderText(QStringLiteral("0.0"));
-    y_input_->setValidator(new QDoubleValidator(y_input_));
-    y_input_->setMaximumWidth(80);
-    toolbar->addWidget(y_input_);
+    QLabel* y_label = new QLabel(QStringLiteral(" Y:"));
+    y_label->setStyleSheet(QStringLiteral("background: transparent; font-weight: bold;"));
+    top_row->addWidget(y_label);
 
-    toolbar->addStretch(1);
-    left_layout->addLayout(toolbar);
+    make_input(y_input_, QStringLiteral("0.0"));
+    top_row->addWidget(y_input_);
 
-    // Canvas
-    canvas_ = new DelaunayCanvas;
-    left_layout->addWidget(canvas_, 1);
+    top_row->addStretch(1);
 
-    // Point log
-    point_log_ = new QTextEdit;
-    point_log_->setReadOnly(true);
-    point_log_->setMaximumHeight(120);
-    point_log_->setPlaceholderText(QStringLiteral("Point coordinates will be listed here..."));
-    left_layout->addWidget(point_log_);
-
-    // ── Right side: overlay controls ──
-    QWidget* right_panel = new QWidget;
-    QVBoxLayout* right_layout = new QVBoxLayout(right_panel);
-    right_layout->setContentsMargins(8, 8, 8, 8);
-    right_layout->setAlignment(Qt::AlignTop);
-
+    // Right: overlay checkboxes
     circumcircle_check_ = new QCheckBox(QStringLiteral("Circumcircles"));
+    circumcircle_check_->setStyleSheet(QStringLiteral(
+        "QCheckBox { background: rgba(255,255,255,200); border: 1px solid #bbb;"
+        "  border-radius: 3px; padding: 3px 8px; }"));
     connect(circumcircle_check_, &QCheckBox::toggled,
             [this](bool checked) { canvas_->setShowCircumcircles(checked); });
-    right_layout->addWidget(circumcircle_check_);
 
     voronoi_check_ = new QCheckBox(QStringLiteral("Voronoi Diagram"));
+    voronoi_check_->setStyleSheet(QStringLiteral(
+        "QCheckBox { background: rgba(255,255,255,200); border: 1px solid #bbb;"
+        "  border-radius: 3px; padding: 3px 8px; }"));
     connect(voronoi_check_, &QCheckBox::toggled,
             [this](bool checked) { canvas_->setShowVoronoi(checked); });
-    right_layout->addWidget(voronoi_check_);
 
-    right_layout->addStretch(1);
-    right_panel->setFixedWidth(160);
+    QVBoxLayout* checks = new QVBoxLayout;
+    checks->setSpacing(4);
+    checks->addWidget(circumcircle_check_);
+    checks->addWidget(voronoi_check_);
+    top_row->addLayout(checks);
 
-    splitter->addWidget(left_panel);
-    splitter->addWidget(right_panel);
-    splitter->setStretchFactor(0, 1);
-    splitter->setStretchFactor(1, 0);
+    canvas_layout->addLayout(top_row);
+    canvas_layout->addStretch(1);  // drawing area
 
-    setCentralWidget(splitter);
+    // ── Bottom-left: point coordinate list (floating, moderate size) ──
+    point_log_ = new QTextEdit;
+    point_log_->setReadOnly(true);
+    point_log_->setFixedSize(280, 140);
+    point_log_->setPlaceholderText(QStringLiteral("Point coordinates..."));
+    point_log_->setStyleSheet(QStringLiteral(
+        "QTextEdit { background: rgba(255,255,255,200); border: 1px solid #bbb;"
+        "  border-radius: 4px; padding: 4px; font-size: 12px; }"));
+    canvas_layout->addWidget(point_log_, 0, Qt::AlignBottom | Qt::AlignLeft);
 
     // ── Connections ──
     connect(canvas_, &DelaunayCanvas::pointsChanged,
