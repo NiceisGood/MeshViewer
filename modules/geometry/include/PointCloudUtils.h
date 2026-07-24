@@ -12,10 +12,12 @@ public:
     /// @param count  Number of points to generate.
     /// @param xMin, xMax  X-axis range.
     /// @param yMin, yMax  Y-axis range.
+    /// @param onlyOnBoundary  If true, points are placed on the rectangle edges only.
     /// @param seed  Random seed (0 = use random device).
     static PointCloud2D generateRandom2D(int count,
                                           float xMin, float xMax,
                                           float yMin, float yMax,
+                                          bool onlyOnBoundary = false,
                                           unsigned int seed = 0);
 
     /// Generate a random 3D point cloud within the specified bounds.
@@ -23,31 +25,52 @@ public:
     /// @param xMin, xMax  X-axis range.
     /// @param yMin, yMax  Y-axis range.
     /// @param zMin, zMax  Z-axis range.
+    /// @param onlyOnBoundary  If true, points are placed on the box surface only.
     /// @param seed  Random seed (0 = use random device).
     static PointCloud3D generateRandom3D(int count,
                                           float xMin, float xMax,
                                           float yMin, float yMax,
                                           float zMin, float zMax,
+                                          bool onlyOnBoundary = false,
                                           unsigned int seed = 0);
 
     /// Generate a random 2D point cloud uniformly distributed inside a circular disc.
     /// @param count  Number of points to generate.
     /// @param cx, cy  Center of the disc.
     /// @param radius  Radius of the disc.
+    /// @param onlyOnBoundary  If true, points are placed on the circumference only.
     /// @param seed  Random seed (0 = use random device).
     static PointCloud2D generateRandomInCircle(int count,
                                                 float cx, float cy,
                                                 float radius,
+                                                bool onlyOnBoundary = false,
+                                                unsigned int seed = 0);
+
+    /// Generate a random 2D point cloud uniformly distributed inside an annular region
+    /// (between two concentric circles).
+    /// @param count  Number of points to generate.
+    /// @param cx, cy  Center of the circles.
+    /// @param radiusOuter  Outer radius (must be > radiusInner).
+    /// @param radiusInner  Inner radius (must be > 0 and < radiusOuter).
+    /// @param onlyOnBoundary  If true, points are placed on the outer circumference only.
+    /// @param seed  Random seed (0 = use random device).
+    static PointCloud2D generateRandomInCircle(int count,
+                                                float cx, float cy,
+                                                float radiusOuter,
+                                                float radiusInner,
+                                                bool onlyOnBoundary = false,
                                                 unsigned int seed = 0);
 
     /// Generate a random 3D point cloud uniformly distributed inside a sphere.
     /// @param count  Number of points to generate.
     /// @param cx, cy, cz  Center of the sphere.
     /// @param radius  Radius of the sphere.
+    /// @param onlyOnBoundary  If true, points are placed on the sphere surface only.
     /// @param seed  Random seed (0 = use random device).
     static PointCloud3D generateRandomInSphere(int count,
                                                 float cx, float cy, float cz,
                                                 float radius,
+                                                bool onlyOnBoundary = false,
                                                 unsigned int seed = 0);
 };
 

@@ -5,6 +5,7 @@
 #include <QComboBox>
 #include <QSpinBox>
 #include <QDoubleSpinBox>
+#include <QCheckBox>
 #include <QStackedWidget>
 #include <QDialogButtonBox>
 #include <QPushButton>
@@ -13,15 +14,15 @@
 #include <QVBoxLayout>
 
 // -----------------------------------------------------------------------
-// PointCloudCreateDialog — modal dialog for creating point clouds
-// with method selection, dynamic parameter fields, seed control,
-// and a live Apply button for preview without closing.
+// PointCloudCreateDialog — modeless dialog for creating point clouds
+// with method selection, dynamic parameter fields, seed & boundary
+// control, and a live Apply button for preview without closing.
 //
 // Supports:
 //   2D: Bounding Box (count, xMin, xMax, yMin, yMax)
-//       Circle       (count, cx, cy, radius)
+//       Circle       (count, cx, cy, outerRadius, innerRadius)
 //   3D: Bounding Box (count, xMin, xMax, yMin, yMax, zMin, zMax)
-//       Sphere       (count, cx, cy, cz, radius)
+//       Sphere       (count, cx, cy, cz, outerRadius, innerRadius)
 // -----------------------------------------------------------------------
 class PointCloudCreateDialog : public QDialog
 {
@@ -34,7 +35,7 @@ public:
     /// @param parent  Parent widget
     explicit PointCloudCreateDialog(Mode mode, QWidget* parent = nullptr);
 
-    // ---- Result accessors (call after exec() returns Accepted) ----------
+    // ---- Result accessors ------------------------------------------------
 
     /// Selected method index: 0 = Bounding Box, 1 = Circle/Sphere
     int methodIndex() const;
@@ -44,6 +45,9 @@ public:
 
     /// Random seed (0 = use random device)
     int seed() const;
+
+    /// Whether points should be placed only on the boundary
+    bool onlyBoundary() const;
 
     // Bounding box parameters (both 2D and 3D)
     float xMin() const;
@@ -56,23 +60,25 @@ public:
     // Circle / Sphere parameters
     float cx() const;
     float cy() const;
-    float cz() const;     // 3D only
-    float radius() const;
+    float cz() const;           // 3D only
+    float radius() const;        // outer radius (alias)
+    float radiusInner() const;  // inner radius (0 = disc/sphere)
 
 signals:
     /// Emitted when the Apply button is clicked (Create2D mode).
-    void applyRequested2D(int count, int method, int seed,
+    void applyRequested2D(int count, int method, int seed, bool onlyBoundary,
                           float xMin, float xMax,
                           float yMin, float yMax,
-                          float cx, float cy, float radius);
+                          float cx, float cy,
+                          float radius, float radiusInner);
 
     /// Emitted when the Apply button is clicked (Create3D mode).
-    void applyRequested3D(int count, int method, int seed,
+    void applyRequested3D(int count, int method, int seed, bool onlyBoundary,
                           float xMin, float xMax,
                           float yMin, float yMax,
                           float zMin, float zMax,
                           float cx, float cy, float cz,
-                          float radius);
+                          float radius, float radiusInner);
 
 private slots:
     void onMethodChanged(int index);
@@ -80,16 +86,17 @@ private slots:
 
 private:
     void buildUI();
-    QWidget* createBBPanel();    // bounding box parameter panel
+    QWidget* createBBPanel();      // bounding box parameter panel
     QWidget* createCirclePanel();  // circle / sphere parameter panel
 
     Mode mode_;
     QComboBox* method_combo_ = nullptr;
     QStackedWidget* param_stack_ = nullptr;
 
-    // Shared: count + seed
+    // Shared: count + seed + boundary
     QSpinBox* count_spin_ = nullptr;
     QSpinBox* seed_spin_ = nullptr;
+    QCheckBox* only_boundary_check_ = nullptr;
 
     // Buttons
     QPushButton* apply_btn_ = nullptr;
@@ -106,7 +113,8 @@ private:
     QDoubleSpinBox* cx_spin_ = nullptr;
     QDoubleSpinBox* cy_spin_ = nullptr;
     QDoubleSpinBox* cz_spin_ = nullptr;
-    QDoubleSpinBox* radius_spin_ = nullptr;
+    QDoubleSpinBox* radius_spin_ = nullptr;    // outer radius
+    QDoubleSpinBox* radius_inner_spin_ = nullptr;  // inner radius (0 = disc)
 };
 
 #endif // POINTCLOUDDIALOG_H

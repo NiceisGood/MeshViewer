@@ -671,9 +671,10 @@ void MeshViewer::onPCCreate2D()
     connect(dlg, &PointCloudCreateDialog::applyRequested2D,
             this, &MeshViewer::onPCApply2D);
     connect(dlg, &QDialog::accepted, this, [this, dlg]() {
-        onPCApply2D(dlg->count(), dlg->methodIndex(), dlg->seed(),
+        onPCApply2D(dlg->count(), dlg->methodIndex(), dlg->seed(), dlg->onlyBoundary(),
                     dlg->xMin(), dlg->xMax(), dlg->yMin(), dlg->yMax(),
-                    dlg->cx(), dlg->cy(), dlg->radius());
+                    dlg->cx(), dlg->cy(),
+                    dlg->radius(), dlg->radiusInner());
     });
     connect(dlg, &QObject::destroyed, this, [this]() {
         pc_dialog_ = nullptr;
@@ -699,10 +700,11 @@ void MeshViewer::onPCCreate3D()
     connect(dlg, &PointCloudCreateDialog::applyRequested3D,
             this, &MeshViewer::onPCApply3D);
     connect(dlg, &QDialog::accepted, this, [this, dlg]() {
-        onPCApply3D(dlg->count(), dlg->methodIndex(), dlg->seed(),
+        onPCApply3D(dlg->count(), dlg->methodIndex(), dlg->seed(), dlg->onlyBoundary(),
                     dlg->xMin(), dlg->xMax(), dlg->yMin(), dlg->yMax(),
                     dlg->zMin(), dlg->zMax(),
-                    dlg->cx(), dlg->cy(), dlg->cz(), dlg->radius());
+                    dlg->cx(), dlg->cy(), dlg->cz(),
+                    dlg->radius(), dlg->radiusInner());
     });
     connect(dlg, &QObject::destroyed, this, [this]() {
         pc_dialog_ = nullptr;
@@ -716,10 +718,11 @@ void MeshViewer::onPCCreate3D()
 //  Point Cloud Apply — live preview from dialog
 // =======================================================================
 
-void MeshViewer::onPCApply2D(int count, int method, int seed,
+void MeshViewer::onPCApply2D(int count, int method, int seed, bool onlyBoundary,
                               float xMin, float xMax,
                               float yMin, float yMax,
-                              float cx, float cy, float radius)
+                              float cx, float cy,
+                              float radius, float radiusInner)
 {
     unsigned int s = static_cast<unsigned int>(seed);
 
@@ -727,10 +730,16 @@ void MeshViewer::onPCApply2D(int count, int method, int seed,
     PointCloud2D* new_pc2d;
     if (method == 0) {
         new_pc2d = new PointCloud2D(PointCloudUtils::generateRandom2D(
-            count, xMin, xMax, yMin, yMax, s));
+            count, xMin, xMax, yMin, yMax, onlyBoundary, s));
     } else {
-        new_pc2d = new PointCloud2D(PointCloudUtils::generateRandomInCircle(
-            count, cx, cy, radius, s));
+        // Circle: use annular overload if inner radius > 0
+        if (radiusInner > 0.0f) {
+            new_pc2d = new PointCloud2D(PointCloudUtils::generateRandomInCircle(
+                count, cx, cy, radius, radiusInner, onlyBoundary, s));
+        } else {
+            new_pc2d = new PointCloud2D(PointCloudUtils::generateRandomInCircle(
+                count, cx, cy, radius, onlyBoundary, s));
+        }
     }
 
     // Replace old 2D PC
@@ -753,22 +762,37 @@ void MeshViewer::onPCApply2D(int count, int method, int seed,
 
     renderer_->loadPointCloud(pc3d_->points());
 
+    QString method_name;
+    if (method == 0) {
+        method_name = QStringLiteral("Bounding Box");
+        if (onlyBoundary)
+            method_name += QStringLiteral(" (boundary)");
+    } else if (radiusInner > 0.0f) {
+        method_name = QStringLiteral("Annulus");
+        if (onlyBoundary)
+            method_name += QStringLiteral(" (boundary)");
+    } else {
+        method_name = QStringLiteral("Circle");
+        if (onlyBoundary)
+            method_name += QStringLiteral(" (boundary)");
+    }
+
     statusBar()->showMessage(
         QStringLiteral("2D point cloud: %1 points (%2)%3")
             .arg(pc3d_->numPoints())
-            .arg(method == 0 ? QStringLiteral("Bounding Box") : QStringLiteral("Circle"))
+            .arg(method_name)
             .arg(seed != 0
                 ? QStringLiteral(" [seed=%1]").arg(seed)
                 : QStringLiteral("")),
         10000);
 }
 
-void MeshViewer::onPCApply3D(int count, int method, int seed,
+void MeshViewer::onPCApply3D(int count, int method, int seed, bool onlyBoundary,
                               float xMin, float xMax,
                               float yMin, float yMax,
                               float zMin, float zMax,
                               float cx, float cy, float cz,
-                              float radius)
+                              float radius, float radiusInner)
 {
     unsigned int s = static_cast<unsigned int>(seed);
 
@@ -780,18 +804,35 @@ void MeshViewer::onPCApply3D(int count, int method, int seed,
     // Generate 3D point cloud
     if (method == 0) {
         pc3d_ = new PointCloud3D(PointCloudUtils::generateRandom3D(
-            count, xMin, xMax, yMin, yMax, zMin, zMax, s));
+            count, xMin, xMax, yMin, yMax, zMin, zMax, onlyBoundary, s));
     } else {
-        pc3d_ = new PointCloud3D(PointCloudUtils::generateRandomInSphere(
-            count, cx, cy, cz, radius, s));
+        if (radiusInner > 0.0f) {
+            // Spherical shell not directly supported — fallback to sphere
+            pc3d_ = new PointCloud3D(PointCloudUtils::generateRandomInSphere(
+                count, cx, cy, cz, radius, onlyBoundary, s));
+        } else {
+            pc3d_ = new PointCloud3D(PointCloudUtils::generateRandomInSphere(
+                count, cx, cy, cz, radius, onlyBoundary, s));
+        }
     }
 
     renderer_->loadPointCloud(pc3d_->points());
 
+    QString method_name;
+    if (method == 0) {
+        method_name = QStringLiteral("Bounding Box");
+        if (onlyBoundary)
+            method_name += QStringLiteral(" (boundary)");
+    } else {
+        method_name = QStringLiteral("Sphere");
+        if (onlyBoundary)
+            method_name += QStringLiteral(" (surface)");
+    }
+
     statusBar()->showMessage(
         QStringLiteral("3D point cloud: %1 points (%2)%3")
             .arg(pc3d_->numPoints())
-            .arg(method == 0 ? QStringLiteral("Bounding Box") : QStringLiteral("Sphere"))
+            .arg(method_name)
             .arg(seed != 0
                 ? QStringLiteral(" [seed=%1]").arg(seed)
                 : QStringLiteral("")),

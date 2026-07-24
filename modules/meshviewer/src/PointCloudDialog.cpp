@@ -18,7 +18,7 @@ PointCloudCreateDialog::PointCloudCreateDialog(Mode mode, QWidget* parent)
     setWindowTitle(mode == Create2D
         ? QStringLiteral("Create 2D Point Cloud")
         : QStringLiteral("Create 3D Point Cloud"));
-    setMinimumWidth(400);
+    setMinimumWidth(420);
 
     buildUI();
 }
@@ -91,12 +91,23 @@ void PointCloudCreateDialog::buildUI()
         main_layout->addLayout(row);
     }
 
+    // ── Only Boundary ──
+    {
+        QHBoxLayout* row = new QHBoxLayout;
+        only_boundary_check_ = new QCheckBox(QStringLiteral("Only on Boundary"));
+        only_boundary_check_->setToolTip(
+            QStringLiteral("Place points only on the outer boundary/surface instead of the interior"));
+        row->addWidget(only_boundary_check_);
+        row->addStretch(1);
+        main_layout->addLayout(row);
+    }
+
     // ── Parameter stack (method-specific) ──
     param_stack_ = new QStackedWidget;
     param_stack_->addWidget(createBBPanel());      // index 0
     param_stack_->addWidget(createCirclePanel());   // index 1
     param_stack_->setCurrentIndex(0);
-    param_stack_->setMinimumHeight(200);
+    param_stack_->setMinimumHeight(220);
     main_layout->addWidget(param_stack_);
 
     // ── Action buttons ──
@@ -175,7 +186,8 @@ QWidget* PointCloudCreateDialog::createCirclePanel()
     QVBoxLayout* layout = new QVBoxLayout(panel);
     layout->setContentsMargins(0, 0, 0, 0);
 
-    QString title = (mode_ == Create2D) ? QStringLiteral("Circle") : QStringLiteral("Sphere");
+    QString title = (mode_ == Create2D) ? QStringLiteral("Circle / Annulus")
+                                        : QStringLiteral("Sphere / Shell");
     QGroupBox* box = new QGroupBox(title);
     QFormLayout* form = new QFormLayout(box);
     form->setContentsMargins(10, 16, 10, 10);
@@ -204,7 +216,14 @@ QWidget* PointCloudCreateDialog::createCirclePanel()
     double default_radius = (mode_ == Create2D) ? 2.0 : 1.5;
     make_spin(default_radius, radius_spin_);
     radius_spin_->setRange(0.001, 1e6);
-    form->addRow(QStringLiteral("Radius:"), radius_spin_);
+    form->addRow(QStringLiteral("Outer Radius:"), radius_spin_);
+
+    make_spin(0.0, radius_inner_spin_);
+    radius_inner_spin_->setRange(0.0, 1e6);
+    radius_inner_spin_->setSpecialValueText(QStringLiteral("None"));
+    radius_inner_spin_->setToolTip(
+        QStringLiteral("Inner radius for annular region (0 = full disc/sphere)"));
+    form->addRow(QStringLiteral("Inner Radius:"), radius_inner_spin_);
 
     layout->addWidget(box);
     layout->addStretch(1);
@@ -224,14 +243,16 @@ void PointCloudCreateDialog::onApply()
 {
     if (mode_ == Create2D) {
         emit applyRequested2D(
-            count(), methodIndex(), seed(),
+            count(), methodIndex(), seed(), onlyBoundary(),
             xMin(), xMax(), yMin(), yMax(),
-            cx(), cy(), radius());
+            cx(), cy(),
+            radius(), radiusInner());
     } else {
         emit applyRequested3D(
-            count(), methodIndex(), seed(),
+            count(), methodIndex(), seed(), onlyBoundary(),
             xMin(), xMax(), yMin(), yMax(), zMin(), zMax(),
-            cx(), cy(), cz(), radius());
+            cx(), cy(), cz(),
+            radius(), radiusInner());
     }
 }
 
@@ -254,6 +275,11 @@ int PointCloudCreateDialog::seed() const
     return seed_spin_->value();
 }
 
+bool PointCloudCreateDialog::onlyBoundary() const
+{
+    return only_boundary_check_->isChecked();
+}
+
 float PointCloudCreateDialog::xMin() const { return static_cast<float>(xmin_spin_->value()); }
 float PointCloudCreateDialog::xMax() const { return static_cast<float>(xmax_spin_->value()); }
 float PointCloudCreateDialog::yMin() const { return static_cast<float>(ymin_spin_->value()); }
@@ -265,3 +291,4 @@ float PointCloudCreateDialog::cx() const { return static_cast<float>(cx_spin_->v
 float PointCloudCreateDialog::cy() const { return static_cast<float>(cy_spin_->value()); }
 float PointCloudCreateDialog::cz() const { return cz_spin_ ? static_cast<float>(cz_spin_->value()) : 0.0f; }
 float PointCloudCreateDialog::radius() const { return static_cast<float>(radius_spin_->value()); }
+float PointCloudCreateDialog::radiusInner() const { return static_cast<float>(radius_inner_spin_->value()); }

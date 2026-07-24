@@ -59,16 +59,17 @@ private slots:
     void onPCCreate3D();
 
     // ── Point Cloud Apply (live preview from dialog) ──
-    void onPCApply2D(int count, int method, int seed,
+    void onPCApply2D(int count, int method, int seed, bool onlyBoundary,
                      float xMin, float xMax,
                      float yMin, float yMax,
-                     float cx, float cy, float radius);
-    void onPCApply3D(int count, int method, int seed,
+                     float cx, float cy,
+                     float radius, float radiusInner);
+    void onPCApply3D(int count, int method, int seed, bool onlyBoundary,
                      float xMin, float xMax,
                      float yMin, float yMax,
                      float zMin, float zMax,
                      float cx, float cy, float cz,
-                     float radius);
+                     float radius, float radiusInner);
 
     // ── Clear slot ──
     void onClearAll();
