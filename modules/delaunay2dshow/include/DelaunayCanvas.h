@@ -53,6 +53,10 @@ public:
     /// Re-run triangulation.  Called automatically after addPoint/clearPoints.
     void retriangulate();
 
+    /// Check all triangles for Delaunay property. Returns violation count.
+    /// Stores violating indices for highlight rendering.
+    int checkDelaunayProperty();
+
 signals:
     /// Emitted after a point is added and the triangulation updated.
     void pointsChanged(int count);
@@ -85,6 +89,9 @@ private:
     bool show_circumcircles_ = false;
     bool show_voronoi_ = false;
     bool show_triangles_ = true;
+
+    // Delaunay property check results
+    std::vector<int> bad_tri_indices_;  // indices of triangles that violate Delaunay
 };
 
 #endif // DELAUNAYCANVAS_H

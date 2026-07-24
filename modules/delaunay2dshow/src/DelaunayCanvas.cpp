@@ -55,6 +55,7 @@ void DelaunayCanvas::clearPoints()
 {
     points_.clear();
     triangles_.clear();
+    bad_tri_indices_.clear();
     delaunay_.reset();
     update();
     emit pointsChanged(0);
@@ -67,6 +68,7 @@ void DelaunayCanvas::clearPoints()
 void DelaunayCanvas::retriangulate()
 {
     triangles_.clear();
+    bad_tri_indices_.clear();
     if (points_.size() < 3) {
         delaunay_.reset();
         return;
@@ -81,6 +83,60 @@ void DelaunayCanvas::retriangulate()
         delaunay_.reset();
         triangles_.clear();
     }
+}
+
+// =======================================================================
+//  Delaunay property check
+// =======================================================================
+
+int DelaunayCanvas::checkDelaunayProperty()
+{
+    bad_tri_indices_.clear();
+
+    auto incircle = [](const Point2D& a, const Point2D& b,
+                       const Point2D& c, const Point2D& d) -> double {
+        double abx = b.x - a.x, aby = b.y - a.y;
+        double acx = c.x - a.x, acy = c.y - a.y;
+        double adx = d.x - a.x, ady = d.y - a.y;
+        double bx2 = abx*abx + aby*aby;
+        double cx2 = acx*acx + acy*acy;
+        double dx2 = adx*adx + ady*ady;
+        return abx * (acy * dx2 - cx2 * ady) -
+               aby * (acx * dx2 - cx2 * adx) +
+               bx2 * (acx * ady - acy * adx);
+    };
+
+    int n = static_cast<int>(points_.size());
+    int nt = static_cast<int>(triangles_.size());
+
+    for (int ti = 0; ti < nt; ++ti) {
+        const auto& t = triangles_[ti];
+        int i0 = t.v0, i1 = t.v1, i2 = t.v2;
+
+        // Ensure CCW winding
+        const Point2D& p0 = points_[i0];
+        const Point2D& p1 = points_[i1];
+        const Point2D& p2 = points_[i2];
+        double orient = (p1.x - p0.x) * (p2.y - p0.y) -
+                        (p1.y - p0.y) * (p2.x - p0.x);
+        const Point2D& pa = points_[i0];
+        const Point2D& pb = (orient >= 0.0) ? points_[i1] : points_[i2];
+        const Point2D& pc = (orient >= 0.0) ? points_[i2] : points_[i1];
+
+        for (int pi = 0; pi < n; ++pi) {
+            if (pi == i0 || pi == i1 || pi == i2)
+                continue;
+            double det = incircle(pa, pb, pc, points_[pi]);
+            // For CCW (pa,pb,pc): det < 0 → pi inside circumcircle
+            if (det < -1e-10) {
+                bad_tri_indices_.push_back(ti);
+                break;
+            }
+        }
+    }
+
+    update();
+    return static_cast<int>(bad_tri_indices_.size());
 }
 
 // =======================================================================
@@ -155,12 +211,24 @@ void DelaunayCanvas::drawTriangles(QPainter& p)
 
     // Draw filled triangles with thin edges
     p.setPen(QPen(QColor(40, 40, 40), 1.5));
-    p.setBrush(QColor(180, 210, 255, 120));  // light blue fill
 
-    for (const auto& tri : triangles_) {
+    // Build fast lookup for bad triangles
+    std::vector<bool> is_bad(triangles_.size(), false);
+    for (int bi : bad_tri_indices_)
+        if (bi >= 0 && bi < static_cast<int>(triangles_.size()))
+            is_bad[bi] = true;
+
+    for (int ti = 0; ti < static_cast<int>(triangles_.size()); ++ti) {
+        const auto& tri = triangles_[ti];
         QPointF a = toScreen(points_[tri.v0]);
         QPointF b = toScreen(points_[tri.v1]);
         QPointF c = toScreen(points_[tri.v2]);
+
+        if (is_bad[ti]) {
+            p.setBrush(QColor(255, 100, 100, 160));  // red highlight
+        } else {
+            p.setBrush(QColor(180, 210, 255, 120));  // light blue fill
+        }
 
         QPolygonF poly;
         poly << a << b << c;

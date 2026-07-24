@@ -105,6 +105,23 @@ void Delaunay2DShow::buildUI()
     connect(add_btn, &QPushButton::clicked, this, &Delaunay2DShow::onAddPoint);
     toolbar_row->addWidget(add_btn);
 
+    QPushButton* test_btn = make_tool_btn(QStringLiteral("Test"),
+        QStringLiteral("Check all triangles for Delaunay property"));
+    connect(test_btn, &QPushButton::clicked, [this]() {
+        int nv = canvas_->checkDelaunayProperty();
+        if (nv == 0) {
+            statusBar()->showMessage(
+                QStringLiteral("All triangles satisfy Delaunay condition. ✓"),
+                5000);
+        } else {
+            statusBar()->showMessage(
+                QStringLiteral("%1 triangle%2 violate Delaunay condition!")
+                    .arg(nv).arg(nv == 1 ? "" : "s"),
+                10000);
+        }
+    });
+    toolbar_row->addWidget(test_btn);
+
     auto make_input = [](QLineEdit*& input, const QString& placeholder) {
         input = new QLineEdit;
         input->setPlaceholderText(placeholder);
