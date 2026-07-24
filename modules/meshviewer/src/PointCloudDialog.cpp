@@ -62,7 +62,7 @@ void PointCloudCreateDialog::buildUI()
         row->addWidget(lbl);
 
         count_spin_ = new QSpinBox;
-        count_spin_->setRange(50, 100000);
+        count_spin_->setRange(mode_ == Create2D ? 3 : 4, 100000);
         count_spin_->setValue(mode_ == Create2D ? 200 : 500);
         count_spin_->setSingleStep(50);
         count_spin_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
