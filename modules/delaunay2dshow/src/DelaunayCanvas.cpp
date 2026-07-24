@@ -302,7 +302,9 @@ void DelaunayCanvas::drawVoronoi(QPainter& p)
                   return edge_less(x.first, y.first);
               });
 
-    // For each edge appearing exactly twice, connect the two circumcenters
+    // For each edge:
+    //   count == 2 → interior edge, draw segment between the two circumcenters
+    //   count == 1 → boundary edge, draw ray from circumcenter to canvas boundary
     for (size_t i = 0; i < edge_tri.size();) {
         size_t j = i;
         while (j < edge_tri.size() &&
@@ -310,13 +312,77 @@ void DelaunayCanvas::drawVoronoi(QPainter& p)
                edge_tri[j].first.b == edge_tri[i].first.b)
             ++j;
         size_t count = j - i;
+
         if (count == 2) {
+            // Interior edge: connect the two adjacent circumcenters
             int t1 = edge_tri[i].second;
             int t2 = edge_tri[i + 1].second;
             p.drawLine(circs[t1], circs[t2]);
+        } else if (count == 1) {
+            // Boundary edge: extend ray from circumcenter outward to canvas boundary
+            int a = edge_tri[i].first.a;
+            int b = edge_tri[i].first.b;
+            int tri_idx = edge_tri[i].second;
+            const auto& tri = triangles_[tri_idx];
+
+            // Find the third vertex (the one NOT in this edge)
+            int c = -1;
+            if (tri.v0 != a && tri.v0 != b) c = tri.v0;
+            else if (tri.v1 != a && tri.v1 != b) c = tri.v1;
+            else c = tri.v2;
+
+            QPointF pa = toScreen(points_[a]);
+            QPointF pb = toScreen(points_[b]);
+            QPointF pc = toScreen(points_[c]);
+            QPointF O = circs[tri_idx];               // circumcenter on the bisector
+            QPointF M = (pa + pb) / 2.0f;              // edge midpoint
+
+            // Edge direction and outward perpendicular
+            double dx = static_cast<double>(pb.x() - pa.x());
+            double dy = static_cast<double>(pb.y() - pa.y());
+            double len = std::sqrt(dx * dx + dy * dy);
+            if (len < 1.0) continue;
+
+            // Two perpendicular directions
+            double nx = -dy / len;
+            double ny =  dx / len;
+
+            // Pick the direction that points AWAY from third vertex C
+            // (the inward direction has a component toward C)
+            double mx = static_cast<double>(pc.x() - M.x());
+            double my = static_cast<double>(pc.y() - M.y());
+            if (nx * mx + ny * my > 0.0) { nx = -nx; ny = -ny; }
+            // Now (nx, ny) points outward from the convex hull
+
+            // Extend from O in the outward direction to the canvas boundary
+            double ox = static_cast<double>(O.x());
+            double oy = static_cast<double>(O.y());
+            double extent = std::max(width(), height()) * 2.0;
+            double ex = ox + nx * extent;
+            double ey = oy + ny * extent;
+
+            // Clip to canvas rectangle [0, w] x [0, h]
+            double w = static_cast<double>(width());
+            double h = static_cast<double>(height());
+            // Parametric line O + t * dir, t in [0, extent]
+            // Find t where x = 0, x = w, y = 0, or y = h
+            double t_max = extent;
+            auto clip_axis = [&](double origin, double dir, double bound) {
+                if (std::abs(dir) < 1e-12) return;
+                double t = (bound - origin) / dir;
+                if (t > 0 && t < t_max) t_max = t;
+            };
+            clip_axis(ox, nx, 0.0);
+            clip_axis(ox, nx, w);
+            clip_axis(oy, ny, 0.0);
+            clip_axis(oy, ny, h);
+
+            if (t_max > 0.0) {
+                QPointF end(static_cast<float>(ox + nx * t_max),
+                            static_cast<float>(oy + ny * t_max));
+                p.drawLine(O, end);
+            }
         }
-        // count == 1: boundary edge — extend to canvas boundary
-        // (handled below for simplicity)
         i = j;
     }
 }
