@@ -18,7 +18,7 @@ PointCloudCreateDialog::PointCloudCreateDialog(Mode mode, QWidget* parent)
     setWindowTitle(mode == Create2D
         ? QStringLiteral("Create 2D Point Cloud")
         : QStringLiteral("Create 3D Point Cloud"));
-    setMinimumWidth(380);
+    setMinimumWidth(400);
 
     buildUI();
 }
@@ -54,7 +54,7 @@ void PointCloudCreateDialog::buildUI()
         main_layout->addLayout(row);
     }
 
-    // ── Count (shared, always visible) ──
+    // ── Count ──
     {
         QHBoxLayout* row = new QHBoxLayout;
         QLabel* lbl = new QLabel(QStringLiteral("Count:"));
@@ -70,25 +70,61 @@ void PointCloudCreateDialog::buildUI()
         main_layout->addLayout(row);
     }
 
-    // ── Parameter stack (method-specific, inside a frame) ──
+    // ── Seed ──
+    {
+        QHBoxLayout* row = new QHBoxLayout;
+        QLabel* lbl = new QLabel(QStringLiteral("Seed:"));
+        lbl->setFixedWidth(70);
+        row->addWidget(lbl);
+
+        seed_spin_ = new QSpinBox;
+        seed_spin_->setRange(0, 999999);
+        seed_spin_->setValue(0);
+        seed_spin_->setSpecialValueText(QStringLiteral("Random"));
+        seed_spin_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+        row->addWidget(seed_spin_);
+
+        QLabel* hint = new QLabel(QStringLiteral("(0 = random)"));
+        hint->setStyleSheet(QStringLiteral("color: #888; font-size: 11px;"));
+        row->addWidget(hint);
+
+        main_layout->addLayout(row);
+    }
+
+    // ── Parameter stack (method-specific) ──
     param_stack_ = new QStackedWidget;
     param_stack_->addWidget(createBBPanel());      // index 0
     param_stack_->addWidget(createCirclePanel());   // index 1
     param_stack_->setCurrentIndex(0);
-    // Set consistent min height so switching doesn't resize the dialog
     param_stack_->setMinimumHeight(200);
     main_layout->addWidget(param_stack_);
 
-    // ── Button box ──
-    QDialogButtonBox* btn_box = new QDialogButtonBox(
-        QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
-    connect(btn_box, &QDialogButtonBox::accepted, this, &QDialog::accept);
-    connect(btn_box, &QDialogButtonBox::rejected, this, &QDialog::reject);
-    main_layout->addWidget(btn_box);
+    // ── Action buttons ──
+    {
+        QHBoxLayout* btn_layout = new QHBoxLayout;
+        btn_layout->setContentsMargins(0, 4, 0, 0);
+
+        apply_btn_ = new QPushButton(QStringLiteral("&Apply"));
+        apply_btn_->setToolTip(QStringLiteral("Generate/re-generate without closing the dialog"));
+        apply_btn_->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
+        btn_layout->addWidget(apply_btn_);
+
+        btn_layout->addStretch(1);
+
+        QDialogButtonBox* btn_box = new QDialogButtonBox(
+            QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
+        connect(btn_box, &QDialogButtonBox::accepted, this, &QDialog::accept);
+        connect(btn_box, &QDialogButtonBox::rejected, this, &QDialog::reject);
+        btn_layout->addWidget(btn_box);
+
+        main_layout->addLayout(btn_layout);
+    }
 
     // ── Connections ──
     connect(method_combo_, QOverload<int>::of(&QComboBox::currentIndexChanged),
             this, &PointCloudCreateDialog::onMethodChanged);
+    connect(apply_btn_, &QPushButton::clicked,
+            this, &PointCloudCreateDialog::onApply);
 }
 
 QWidget* PointCloudCreateDialog::createBBPanel()
@@ -184,6 +220,21 @@ void PointCloudCreateDialog::onMethodChanged(int index)
     param_stack_->setCurrentIndex(index);
 }
 
+void PointCloudCreateDialog::onApply()
+{
+    if (mode_ == Create2D) {
+        emit applyRequested2D(
+            count(), methodIndex(), seed(),
+            xMin(), xMax(), yMin(), yMax(),
+            cx(), cy(), radius());
+    } else {
+        emit applyRequested3D(
+            count(), methodIndex(), seed(),
+            xMin(), xMax(), yMin(), yMax(), zMin(), zMax(),
+            cx(), cy(), cz(), radius());
+    }
+}
+
 // =======================================================================
 //  Result accessors
 // =======================================================================
@@ -196,6 +247,11 @@ int PointCloudCreateDialog::methodIndex() const
 int PointCloudCreateDialog::count() const
 {
     return count_spin_->value();
+}
+
+int PointCloudCreateDialog::seed() const
+{
+    return seed_spin_->value();
 }
 
 float PointCloudCreateDialog::xMin() const { return static_cast<float>(xmin_spin_->value()); }

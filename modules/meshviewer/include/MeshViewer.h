@@ -15,6 +15,7 @@ class MeshRenderer;
 class Geometry;
 class PointCloud2D;
 class PointCloud3D;
+class PointCloudCreateDialog;
 
 // -----------------------------------------------------------------------
 // MeshViewer — main window with menu bar, status bar, and OpenGL view.
@@ -57,6 +58,18 @@ private slots:
     void onPCCreate2D();
     void onPCCreate3D();
 
+    // ── Point Cloud Apply (live preview from dialog) ──
+    void onPCApply2D(int count, int method, int seed,
+                     float xMin, float xMax,
+                     float yMin, float yMax,
+                     float cx, float cy, float radius);
+    void onPCApply3D(int count, int method, int seed,
+                     float xMin, float xMax,
+                     float yMin, float yMax,
+                     float zMin, float zMax,
+                     float cx, float cy, float cz,
+                     float radius);
+
     // ── Clear slot ──
     void onClearAll();
 
@@ -83,6 +96,7 @@ private:
     // Point cloud data
     PointCloud2D* pc2d_ = nullptr;
     PointCloud3D* pc3d_ = nullptr;
+    PointCloudCreateDialog* pc_dialog_ = nullptr;  // modeless dialog
 };
 
 #endif // MESHVIEWER_H

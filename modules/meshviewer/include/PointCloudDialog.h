@@ -7,13 +7,15 @@
 #include <QDoubleSpinBox>
 #include <QStackedWidget>
 #include <QDialogButtonBox>
+#include <QPushButton>
 #include <QLabel>
 #include <QFormLayout>
 #include <QVBoxLayout>
 
 // -----------------------------------------------------------------------
 // PointCloudCreateDialog — modal dialog for creating point clouds
-// with method selection and dynamic parameter fields.
+// with method selection, dynamic parameter fields, seed control,
+// and a live Apply button for preview without closing.
 //
 // Supports:
 //   2D: Bounding Box (count, xMin, xMax, yMin, yMax)
@@ -40,6 +42,9 @@ public:
     /// Number of points (shared by all methods)
     int count() const;
 
+    /// Random seed (0 = use random device)
+    int seed() const;
+
     // Bounding box parameters (both 2D and 3D)
     float xMin() const;
     float xMax() const;
@@ -54,8 +59,24 @@ public:
     float cz() const;     // 3D only
     float radius() const;
 
+signals:
+    /// Emitted when the Apply button is clicked (Create2D mode).
+    void applyRequested2D(int count, int method, int seed,
+                          float xMin, float xMax,
+                          float yMin, float yMax,
+                          float cx, float cy, float radius);
+
+    /// Emitted when the Apply button is clicked (Create3D mode).
+    void applyRequested3D(int count, int method, int seed,
+                          float xMin, float xMax,
+                          float yMin, float yMax,
+                          float zMin, float zMax,
+                          float cx, float cy, float cz,
+                          float radius);
+
 private slots:
     void onMethodChanged(int index);
+    void onApply();
 
 private:
     void buildUI();
@@ -66,8 +87,12 @@ private:
     QComboBox* method_combo_ = nullptr;
     QStackedWidget* param_stack_ = nullptr;
 
-    // Shared: count
+    // Shared: count + seed
     QSpinBox* count_spin_ = nullptr;
+    QSpinBox* seed_spin_ = nullptr;
+
+    // Buttons
+    QPushButton* apply_btn_ = nullptr;
 
     // Bounding box parameters
     QDoubleSpinBox* xmin_spin_ = nullptr;

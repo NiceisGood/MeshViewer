@@ -56,6 +56,7 @@ MeshViewer::~MeshViewer()
     delete geometry_;
     delete pc2d_;
     delete pc3d_;
+    delete pc_dialog_;
 }
 
 // =======================================================================
@@ -656,25 +657,85 @@ void MeshViewer::onPCExport()
 
 void MeshViewer::onPCCreate2D()
 {
-    PointCloudCreateDialog dlg(PointCloudCreateDialog::Create2D, this);
-    if (dlg.exec() != QDialog::Accepted)
+    // If dialog already open, just bring it to front
+    if (pc_dialog_) {
+        pc_dialog_->raise();
+        pc_dialog_->activateWindow();
         return;
-
-    // Clean up previous point cloud
-    delete pc2d_; pc2d_ = nullptr;
-    delete pc3d_; pc3d_ = nullptr;
-
-    int count = dlg.count();
-
-    if (dlg.methodIndex() == 0) {
-        // Bounding Box method
-        pc2d_ = new PointCloud2D(PointCloudUtils::generateRandom2D(
-            count, dlg.xMin(), dlg.xMax(), dlg.yMin(), dlg.yMax()));
-    } else {
-        // Circle method
-        pc2d_ = new PointCloud2D(PointCloudUtils::generateRandomInCircle(
-            count, dlg.cx(), dlg.cy(), dlg.radius()));
     }
+
+    PointCloudCreateDialog* dlg = new PointCloudCreateDialog(
+        PointCloudCreateDialog::Create2D, this);
+    dlg->setAttribute(Qt::WA_DeleteOnClose);
+
+    connect(dlg, &PointCloudCreateDialog::applyRequested2D,
+            this, &MeshViewer::onPCApply2D);
+    connect(dlg, &QDialog::accepted, this, [this, dlg]() {
+        onPCApply2D(dlg->count(), dlg->methodIndex(), dlg->seed(),
+                    dlg->xMin(), dlg->xMax(), dlg->yMin(), dlg->yMax(),
+                    dlg->cx(), dlg->cy(), dlg->radius());
+    });
+    connect(dlg, &QObject::destroyed, this, [this]() {
+        pc_dialog_ = nullptr;
+    });
+
+    pc_dialog_ = dlg;
+    dlg->show();
+}
+
+void MeshViewer::onPCCreate3D()
+{
+    // If dialog already open, just bring it to front
+    if (pc_dialog_) {
+        pc_dialog_->raise();
+        pc_dialog_->activateWindow();
+        return;
+    }
+
+    PointCloudCreateDialog* dlg = new PointCloudCreateDialog(
+        PointCloudCreateDialog::Create3D, this);
+    dlg->setAttribute(Qt::WA_DeleteOnClose);
+
+    connect(dlg, &PointCloudCreateDialog::applyRequested3D,
+            this, &MeshViewer::onPCApply3D);
+    connect(dlg, &QDialog::accepted, this, [this, dlg]() {
+        onPCApply3D(dlg->count(), dlg->methodIndex(), dlg->seed(),
+                    dlg->xMin(), dlg->xMax(), dlg->yMin(), dlg->yMax(),
+                    dlg->zMin(), dlg->zMax(),
+                    dlg->cx(), dlg->cy(), dlg->cz(), dlg->radius());
+    });
+    connect(dlg, &QObject::destroyed, this, [this]() {
+        pc_dialog_ = nullptr;
+    });
+
+    pc_dialog_ = dlg;
+    dlg->show();
+}
+
+// =======================================================================
+//  Point Cloud Apply — live preview from dialog
+// =======================================================================
+
+void MeshViewer::onPCApply2D(int count, int method, int seed,
+                              float xMin, float xMax,
+                              float yMin, float yMax,
+                              float cx, float cy, float radius)
+{
+    unsigned int s = static_cast<unsigned int>(seed);
+
+    // Generate 2D point cloud
+    PointCloud2D* new_pc2d;
+    if (method == 0) {
+        new_pc2d = new PointCloud2D(PointCloudUtils::generateRandom2D(
+            count, xMin, xMax, yMin, yMax, s));
+    } else {
+        new_pc2d = new PointCloud2D(PointCloudUtils::generateRandomInCircle(
+            count, cx, cy, radius, s));
+    }
+
+    // Replace old 2D PC
+    delete pc2d_;
+    pc2d_ = new_pc2d;
 
     // Convert to 3D for rendering (z = 0)
     std::vector<float> pts3d;
@@ -686,46 +747,54 @@ void MeshViewer::onPCCreate2D()
         pts3d.push_back(y);
         pts3d.push_back(0.0f);
     }
+
+    delete pc3d_;
     pc3d_ = new PointCloud3D(std::move(pts3d));
 
     renderer_->loadPointCloud(pc3d_->points());
 
     statusBar()->showMessage(
-        QStringLiteral("Created 2D point cloud: %1 points (%2)")
+        QStringLiteral("2D point cloud: %1 points (%2)%3")
             .arg(pc3d_->numPoints())
-            .arg(dlg.methodIndex() == 0 ? QStringLiteral("Bounding Box") : QStringLiteral("Circle")),
+            .arg(method == 0 ? QStringLiteral("Bounding Box") : QStringLiteral("Circle"))
+            .arg(seed != 0
+                ? QStringLiteral(" [seed=%1]").arg(seed)
+                : QStringLiteral("")),
         10000);
 }
 
-void MeshViewer::onPCCreate3D()
+void MeshViewer::onPCApply3D(int count, int method, int seed,
+                              float xMin, float xMax,
+                              float yMin, float yMax,
+                              float zMin, float zMax,
+                              float cx, float cy, float cz,
+                              float radius)
 {
-    PointCloudCreateDialog dlg(PointCloudCreateDialog::Create3D, this);
-    if (dlg.exec() != QDialog::Accepted)
-        return;
+    unsigned int s = static_cast<unsigned int>(seed);
 
-    // Clean up previous point cloud
-    delete pc2d_; pc2d_ = nullptr;
-    delete pc3d_; pc3d_ = nullptr;
+    // Replace old PCs
+    delete pc2d_;
+    pc2d_ = nullptr;
+    delete pc3d_;
 
-    int count = dlg.count();
-
-    if (dlg.methodIndex() == 0) {
-        // Bounding Box method
+    // Generate 3D point cloud
+    if (method == 0) {
         pc3d_ = new PointCloud3D(PointCloudUtils::generateRandom3D(
-            count, dlg.xMin(), dlg.xMax(), dlg.yMin(), dlg.yMax(),
-            dlg.zMin(), dlg.zMax()));
+            count, xMin, xMax, yMin, yMax, zMin, zMax, s));
     } else {
-        // Sphere method
         pc3d_ = new PointCloud3D(PointCloudUtils::generateRandomInSphere(
-            count, dlg.cx(), dlg.cy(), dlg.cz(), dlg.radius()));
+            count, cx, cy, cz, radius, s));
     }
 
     renderer_->loadPointCloud(pc3d_->points());
 
     statusBar()->showMessage(
-        QStringLiteral("Created 3D point cloud: %1 points (%2)")
+        QStringLiteral("3D point cloud: %1 points (%2)%3")
             .arg(pc3d_->numPoints())
-            .arg(dlg.methodIndex() == 0 ? QStringLiteral("Bounding Box") : QStringLiteral("Sphere")),
+            .arg(method == 0 ? QStringLiteral("Bounding Box") : QStringLiteral("Sphere"))
+            .arg(seed != 0
+                ? QStringLiteral(" [seed=%1]").arg(seed)
+                : QStringLiteral("")),
         10000);
 }
 
