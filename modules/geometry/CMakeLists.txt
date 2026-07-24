@@ -5,6 +5,10 @@
 add_library(geometry STATIC
     src/Geometry.cpp
     include/Geometry.h
+    src/PointCloud.cpp
+    include/PointCloud.h
+    src/PointCloudUtils.cpp
+    include/PointCloudUtils.h
 )
 
 target_include_directories(geometry PUBLIC

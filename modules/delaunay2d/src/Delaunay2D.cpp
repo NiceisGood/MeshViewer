@@ -159,7 +159,12 @@ std::vector<Triangle2D> Delaunay2D::triangulate_default()
         for (auto it = bad.rbegin(); it != bad.rend(); ++it) {
             v0.erase(v0.begin()+*it); v1.erase(v1.begin()+*it); v2.erase(v2.begin()+*it);
         }
-        for (const auto& e : es) { v0.push_back(e.a); v1.push_back(e.b); v2.push_back(pi); }
+        for (const auto& e : es) {
+            int a = e.a, b = e.b;
+            if (orient2d(pts_[a], pts_[b], pt) < 0)
+                std::swap(a, b);
+            v0.push_back(a); v1.push_back(b); v2.push_back(pi);
+        }
     }
 
     int nt = static_cast<int>(v0.size());
@@ -266,7 +271,10 @@ std::vector<Triangle2D> Delaunay2D::triangulate_optimized()
 
         // Stitch new point to boundary edges.
         for (const auto& e : es) {
-            v0.push_back(e.a); v1.push_back(e.b); v2.push_back(pi);
+            int a = e.a, b = e.b;
+            if (orient2d(pts_[a], pts_[b], pt) < 0)
+                std::swap(a, b);
+            v0.push_back(a); v1.push_back(b); v2.push_back(pi);
         }
     }
 

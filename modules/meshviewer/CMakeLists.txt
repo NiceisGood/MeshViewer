@@ -13,9 +13,11 @@ add_executable(meshviewer
     src/MeshViewer.cpp
     src/MeshRenderer.cpp
     src/MeshReader.cpp
+    src/PointCloudDialog.cpp
     include/MeshViewer.h
     include/MeshRenderer.h
     include/MeshReader.h
+    include/PointCloudDialog.h
 )
 
 target_include_directories(meshviewer PRIVATE

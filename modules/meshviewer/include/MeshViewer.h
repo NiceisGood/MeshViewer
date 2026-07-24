@@ -13,6 +13,8 @@
 
 class MeshRenderer;
 class Geometry;
+class PointCloud2D;
+class PointCloud3D;
 
 // -----------------------------------------------------------------------
 // MeshViewer — main window with menu bar, status bar, and OpenGL view.
@@ -49,6 +51,15 @@ private slots:
     void onDelaunay3DSurfaceOptimize();
     void onDelaunay3DVolumeOptimize();
 
+    // ── Point Cloud slots ──
+    void onPCImport();
+    void onPCExport();
+    void onPCCreate2D();
+    void onPCCreate3D();
+
+    // ── Clear slot ──
+    void onClearAll();
+
 private:
     void createMenus();
     void createStatusBar();
@@ -68,6 +79,10 @@ private:
     QSlider* slice_pos_slider_ = nullptr;
     QComboBox* slice_normal_combo_ = nullptr;
     QComboBox* slice_display_combo_ = nullptr;
+
+    // Point cloud data
+    PointCloud2D* pc2d_ = nullptr;
+    PointCloud3D* pc3d_ = nullptr;
 };
 
 #endif // MESHVIEWER_H

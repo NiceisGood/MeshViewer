@@ -3,7 +3,11 @@
 #include "MeshReader.h"
 #include "Geometry.h"
 #include "Delaunay2D.h"
+#include "Delaunay3D.h"
 #include "MeshUtils.h"
+#include "PointCloud.h"
+#include "PointCloudUtils.h"
+#include "PointCloudDialog.h"
 
 #include <QMenuBar>
 #include <QMenu>
@@ -22,6 +26,7 @@
 #include <QHBoxLayout>
 #include <QLabel>
 
+#include <QInputDialog>
 #include <cstdio>
 
 // =======================================================================
@@ -49,6 +54,8 @@ MeshViewer::MeshViewer(QWidget* parent)
 MeshViewer::~MeshViewer()
 {
     delete geometry_;
+    delete pc2d_;
+    delete pc3d_;
 }
 
 // =======================================================================
@@ -127,6 +134,25 @@ void MeshViewer::createMenus()
     QAction* d3d_vol_opt_act = d3d_menu->addAction(QStringLiteral("Volume Delaunay O&ptimization"));
     d3d_vol_opt_act->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_4));
     connect(d3d_vol_opt_act, &QAction::triggered, this, &MeshViewer::onDelaunay3DVolumeOptimize);
+
+    // ── Point Cloud menu ──
+    QMenu* pc_menu = menuBar()->addMenu(QStringLiteral("&Point Cloud"));
+
+    QAction* pc_import_act = pc_menu->addAction(QStringLiteral("&Import Point Cloud..."));
+    pc_import_act->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_U));
+    connect(pc_import_act, &QAction::triggered, this, &MeshViewer::onPCImport);
+
+    QAction* pc_export_act = pc_menu->addAction(QStringLiteral("&Export Point Cloud..."));
+    pc_export_act->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_U));
+    connect(pc_export_act, &QAction::triggered, this, &MeshViewer::onPCExport);
+
+    pc_menu->addSeparator();
+
+    QAction* pc_create2d_act = pc_menu->addAction(QStringLiteral("Create &2D Point Cloud..."));
+    connect(pc_create2d_act, &QAction::triggered, this, &MeshViewer::onPCCreate2D);
+
+    QAction* pc_create3d_act = pc_menu->addAction(QStringLiteral("Create &3D Point Cloud..."));
+    connect(pc_create3d_act, &QAction::triggered, this, &MeshViewer::onPCCreate3D);
 
     // ── View menu ──
     QMenu* view_menu = menuBar()->addMenu(QStringLiteral("&View"));
@@ -227,6 +253,12 @@ void MeshViewer::createMenus()
     connect(reset_act, &QAction::triggered, [this]() {
         renderer_->resetView();
     });
+
+    view_menu->addSeparator();
+
+    QAction* clear_act = view_menu->addAction(QStringLiteral("Clea&r All"));
+    clear_act->setShortcut(QKeySequence(Qt::Key_Delete));
+    connect(clear_act, &QAction::triggered, this, &MeshViewer::onClearAll);
 }
 
 void MeshViewer::createStatusBar()
@@ -503,30 +535,281 @@ void MeshViewer::onSliceDisplayModeChanged(int index)
 }
 
 // =======================================================================
+//  Point Cloud slots
+// =======================================================================
+
+void MeshViewer::onPCImport()
+{
+    QString path = QFileDialog::getOpenFileName(
+        this,
+        QStringLiteral("Import Point Cloud"),
+        QString(),
+        QStringLiteral("Point Cloud Files (*.p2d *.p3d);;2D Point Cloud (*.p2d);;3D Point Cloud (*.p3d);;All Files (*)")
+    );
+
+    if (path.isEmpty()) return;
+
+    QString suffix = QFileInfo(path).suffix().toLower();
+
+    // Clean up previous point cloud
+    delete pc2d_; pc2d_ = nullptr;
+    delete pc3d_; pc3d_ = nullptr;
+
+    if (suffix == QStringLiteral("p2d")) {
+        // 2D point cloud
+        pc2d_ = new PointCloud2D;
+        if (!pc2d_->readFile(path.toStdString())) {
+            delete pc2d_; pc2d_ = nullptr;
+            QMessageBox::warning(this,
+                                 QStringLiteral("Import Error"),
+                                 QStringLiteral("Failed to import 2D point cloud:\n%1").arg(path));
+            return;
+        }
+        // Convert to 3D for rendering (z = 0)
+        std::vector<float> pts3d;
+        pts3d.reserve(pc2d_->numPoints() * 3);
+        for (int i = 0; i < pc2d_->numPoints(); ++i) {
+            float x, y;
+            pc2d_->getPoint(i, x, y);
+            pts3d.push_back(x);
+            pts3d.push_back(y);
+            pts3d.push_back(0.0f);
+        }
+        pc3d_ = new PointCloud3D(std::move(pts3d));
+    } else if (suffix == QStringLiteral("p3d")) {
+        // 3D point cloud
+        pc3d_ = new PointCloud3D;
+        if (!pc3d_->readFile(path.toStdString())) {
+            delete pc3d_; pc3d_ = nullptr;
+            QMessageBox::warning(this,
+                                 QStringLiteral("Import Error"),
+                                 QStringLiteral("Failed to import 3D point cloud:\n%1").arg(path));
+            return;
+        }
+    } else {
+        QMessageBox::warning(this,
+                             QStringLiteral("Import Error"),
+                             QStringLiteral("Unrecognized file extension: .%1\nSupported: .p2d, .p3d").arg(suffix));
+        return;
+    }
+
+    // Render the 3D point cloud
+    renderer_->loadPointCloud(pc3d_->points());
+
+    statusBar()->showMessage(
+        QStringLiteral("Imported point cloud: %1 (%2 points)")
+            .arg(QFileInfo(path).fileName())
+            .arg(pc3d_->numPoints()),
+        10000);
+}
+
+void MeshViewer::onPCExport()
+{
+    // Determine what to export
+    bool has_pc = (pc2d_ && !pc2d_->empty()) || (pc3d_ && !pc3d_->empty());
+    if (!has_pc) {
+        QMessageBox::information(this,
+                                 QStringLiteral("Export Point Cloud"),
+                                 QStringLiteral("No point cloud to export.\nImport or create a point cloud first."));
+        return;
+    }
+
+    QString filter;
+    if (pc2d_ && !pc2d_->empty()) {
+        filter = QStringLiteral("2D Point Cloud (*.p2d);;3D Point Cloud (*.p3d)");
+    } else {
+        filter = QStringLiteral("3D Point Cloud (*.p3d)");
+    }
+
+    QString path = QFileDialog::getSaveFileName(
+        this,
+        QStringLiteral("Export Point Cloud As"),
+        QString(),
+        filter
+    );
+
+    if (path.isEmpty()) return;
+
+    QString suffix = QFileInfo(path).suffix().toLower();
+
+    bool ok = false;
+    if (suffix == QStringLiteral("p2d") && pc2d_ && !pc2d_->empty()) {
+        ok = pc2d_->writeFile(path.toStdString());
+    } else if (suffix == QStringLiteral("p3d") && pc3d_ && !pc3d_->empty()) {
+        ok = pc3d_->writeFile(path.toStdString());
+    } else {
+        QMessageBox::warning(this,
+                             QStringLiteral("Export Error"),
+                             QStringLiteral("Cannot export to this format.\n2D point cloud requires .p2d, 3D requires .p3d."));
+        return;
+    }
+
+    if (!ok) {
+        QMessageBox::warning(this,
+                             QStringLiteral("Export Error"),
+                             QStringLiteral("Failed to export point cloud to:\n%1").arg(path));
+        return;
+    }
+
+    statusBar()->showMessage(QStringLiteral("Exported point cloud: %1").arg(path), 5000);
+}
+
+void MeshViewer::onPCCreate2D()
+{
+    PointCloudCreateDialog dlg(PointCloudCreateDialog::Create2D, this);
+    if (dlg.exec() != QDialog::Accepted)
+        return;
+
+    // Clean up previous point cloud
+    delete pc2d_; pc2d_ = nullptr;
+    delete pc3d_; pc3d_ = nullptr;
+
+    int count = dlg.count();
+
+    if (dlg.methodIndex() == 0) {
+        // Bounding Box method
+        pc2d_ = new PointCloud2D(PointCloudUtils::generateRandom2D(
+            count, dlg.xMin(), dlg.xMax(), dlg.yMin(), dlg.yMax()));
+    } else {
+        // Circle method
+        pc2d_ = new PointCloud2D(PointCloudUtils::generateRandomInCircle(
+            count, dlg.cx(), dlg.cy(), dlg.radius()));
+    }
+
+    // Convert to 3D for rendering (z = 0)
+    std::vector<float> pts3d;
+    pts3d.reserve(pc2d_->numPoints() * 3);
+    for (int i = 0; i < pc2d_->numPoints(); ++i) {
+        float x, y;
+        pc2d_->getPoint(i, x, y);
+        pts3d.push_back(x);
+        pts3d.push_back(y);
+        pts3d.push_back(0.0f);
+    }
+    pc3d_ = new PointCloud3D(std::move(pts3d));
+
+    renderer_->loadPointCloud(pc3d_->points());
+
+    statusBar()->showMessage(
+        QStringLiteral("Created 2D point cloud: %1 points (%2)")
+            .arg(pc3d_->numPoints())
+            .arg(dlg.methodIndex() == 0 ? QStringLiteral("Bounding Box") : QStringLiteral("Circle")),
+        10000);
+}
+
+void MeshViewer::onPCCreate3D()
+{
+    PointCloudCreateDialog dlg(PointCloudCreateDialog::Create3D, this);
+    if (dlg.exec() != QDialog::Accepted)
+        return;
+
+    // Clean up previous point cloud
+    delete pc2d_; pc2d_ = nullptr;
+    delete pc3d_; pc3d_ = nullptr;
+
+    int count = dlg.count();
+
+    if (dlg.methodIndex() == 0) {
+        // Bounding Box method
+        pc3d_ = new PointCloud3D(PointCloudUtils::generateRandom3D(
+            count, dlg.xMin(), dlg.xMax(), dlg.yMin(), dlg.yMax(),
+            dlg.zMin(), dlg.zMax()));
+    } else {
+        // Sphere method
+        pc3d_ = new PointCloud3D(PointCloudUtils::generateRandomInSphere(
+            count, dlg.cx(), dlg.cy(), dlg.cz(), dlg.radius()));
+    }
+
+    renderer_->loadPointCloud(pc3d_->points());
+
+    statusBar()->showMessage(
+        QStringLiteral("Created 3D point cloud: %1 points (%2)")
+            .arg(pc3d_->numPoints())
+            .arg(dlg.methodIndex() == 0 ? QStringLiteral("Bounding Box") : QStringLiteral("Sphere")),
+        10000);
+}
+
+// =======================================================================
+//  Clear all data
+// =======================================================================
+
+void MeshViewer::onClearAll()
+{
+    // Clear geometry
+    delete geometry_;
+    geometry_ = nullptr;
+
+    // Clear point clouds
+    delete pc2d_;
+    pc2d_ = nullptr;
+    delete pc3d_;
+    pc3d_ = nullptr;
+
+    // Clear renderer
+    renderer_->clearMesh();
+    renderer_->clearPointCloud();
+
+    // Disable slice if active
+    if (slice_enable_check_->isChecked()) {
+        slice_enable_check_->setChecked(false);
+    }
+
+    // Reset info label
+    info_label_->setText(QStringLiteral("No data loaded"));
+
+    // Reset camera
+    renderer_->resetView();
+
+    statusBar()->showMessage(QStringLiteral("Cleared all data"), 3000);
+}
+
+// =======================================================================
 //  Delaunay menu slots (placeholders — functionality to be added later)
 // =======================================================================
 
 void MeshViewer::onDelaunay2D()
 {
-    if (!geometry_ || geometry_->empty()) {
-        statusBar()->showMessage(QStringLiteral("No geometry loaded — import a mesh first (File → Import Geometry)"), 5000);
+    // Determine point source: point cloud first, then geometry vertices
+    std::vector<Point2D> points;
+
+    if (pc2d_ && !pc2d_->empty()) {
+        // Use 2D point cloud directly
+        points.reserve(pc2d_->numPoints());
+        for (int i = 0; i < pc2d_->numPoints(); ++i) {
+            float x, y;
+            pc2d_->getPoint(i, x, y);
+            points.push_back({static_cast<double>(x),
+                              static_cast<double>(y)});
+        }
+    } else if (pc3d_ && !pc3d_->empty()) {
+        // Extract XY from 3D point cloud
+        points.reserve(pc3d_->numPoints());
+        for (int i = 0; i < pc3d_->numPoints(); ++i) {
+            float x, y, z;
+            pc3d_->getPoint(i, x, y, z);
+            (void)z;  // discard Z
+            points.push_back({static_cast<double>(x),
+                              static_cast<double>(y)});
+        }
+    } else if (geometry_ && !geometry_->empty()) {
+        // Fallback: extract XY from geometry vertices
+        const auto& verts = geometry_->vertices();
+        points.reserve(geometry_->numVertices());
+        for (int i = 0; i < geometry_->numVertices(); ++i) {
+            points.push_back({static_cast<double>(verts[i * 3]),
+                              static_cast<double>(verts[i * 3 + 1])});
+        }
+    } else {
+        statusBar()->showMessage(QStringLiteral("No data — import/load a mesh or create/import a point cloud first"), 5000);
         return;
     }
 
-    // Extract points from geometry vertices (project to XY plane)
-    const auto& verts = geometry_->vertices();
-    int num_pts = geometry_->numVertices();
-    if (num_pts < 3) {
+    if (static_cast<int>(points.size()) < 3) {
         statusBar()->showMessage(QStringLiteral("Need at least 3 points for 2D Delaunay triangulation"), 5000);
         return;
     }
 
-    std::vector<Point2D> points;
-    points.reserve(num_pts);
-    for (int i = 0; i < num_pts; ++i) {
-        points.push_back({static_cast<double>(verts[i * 3]),
-                          static_cast<double>(verts[i * 3 + 1])});
-    }
+    int orig_count = static_cast<int>(points.size());  // save before move
 
     // Run Delaunay2D triangulation
     Delaunay2D delaunay(std::move(points), Delaunay2D::Strategy::Optimized);
@@ -538,8 +821,21 @@ void MeshViewer::onDelaunay2D()
     }
 
     // Convert result to MeshData for rendering
+    // NOTE: only copy original input points (skip super-triangle vertices at delaunay.points()[orig_count..])
     MeshData mesh;
-    read_2d_mesh(delaunay.points(), triangles, mesh);
+    const auto& all_pts = delaunay.points();
+    mesh.vertices.reserve(orig_count * 3);
+    for (int i = 0; i < orig_count; ++i) {
+        mesh.vertices.push_back(static_cast<float>(all_pts[i].x));
+        mesh.vertices.push_back(static_cast<float>(all_pts[i].y));
+        mesh.vertices.push_back(0.0f);
+    }
+    mesh.indices.reserve(triangles.size() * 3);
+    for (const auto& t : triangles) {
+        mesh.indices.push_back(static_cast<unsigned int>(t.v0));
+        mesh.indices.push_back(static_cast<unsigned int>(t.v1));
+        mesh.indices.push_back(static_cast<unsigned int>(t.v2));
+    }
 
     renderer_->loadMesh(mesh);
 
@@ -552,24 +848,44 @@ void MeshViewer::onDelaunay2D()
 
 void MeshViewer::onDelaunay2DOptimize()
 {
-    if (!geometry_ || geometry_->empty()) {
-        statusBar()->showMessage(QStringLiteral("No geometry loaded — import a mesh first (File → Import Geometry)"), 5000);
+    // Determine point source: point cloud first, then geometry vertices
+    std::vector<Point2D> points;
+
+    if (pc2d_ && !pc2d_->empty()) {
+        points.reserve(pc2d_->numPoints());
+        for (int i = 0; i < pc2d_->numPoints(); ++i) {
+            float x, y;
+            pc2d_->getPoint(i, x, y);
+            points.push_back({static_cast<double>(x),
+                              static_cast<double>(y)});
+        }
+    } else if (pc3d_ && !pc3d_->empty()) {
+        points.reserve(pc3d_->numPoints());
+        for (int i = 0; i < pc3d_->numPoints(); ++i) {
+            float x, y, z;
+            pc3d_->getPoint(i, x, y, z);
+            (void)z;
+            points.push_back({static_cast<double>(x),
+                              static_cast<double>(y)});
+        }
+    } else if (geometry_ && !geometry_->empty()) {
+        const auto& verts = geometry_->vertices();
+        points.reserve(geometry_->numVertices());
+        for (int i = 0; i < geometry_->numVertices(); ++i) {
+            points.push_back({static_cast<double>(verts[i * 3]),
+                              static_cast<double>(verts[i * 3 + 1])});
+        }
+    } else {
+        statusBar()->showMessage(QStringLiteral("No data — import/load a mesh or create/import a point cloud first"), 5000);
         return;
     }
 
-    // Extract XY points from geometry
-    const auto& verts = geometry_->vertices();
-    int num_pts = geometry_->numVertices();
-    if (num_pts < 3) {
+    if (static_cast<int>(points.size()) < 3) {
         statusBar()->showMessage(QStringLiteral("Need at least 3 points for 2D Delaunay optimization"), 5000);
         return;
     }
 
-    std::vector<Point2D> points;
-    points.reserve(num_pts);
-    for (int i = 0; i < num_pts; ++i)
-        points.push_back({static_cast<double>(verts[i * 3]),
-                          static_cast<double>(verts[i * 3 + 1])});
+    int orig_count = static_cast<int>(points.size());  // save before move
 
     // Initial Delaunay triangulation to establish connectivity
     Delaunay2D delaunay(points, Delaunay2D::Strategy::Optimized);
@@ -660,20 +976,154 @@ void MeshViewer::onDelaunay2DOptimize()
 
 void MeshViewer::onDelaunay3DSurface()
 {
-    statusBar()->showMessage(QStringLiteral("Surface Delaunay Triangulation — not yet implemented"), 5000);
+    // Determine point source: 3D point cloud first, then geometry vertices
+    std::vector<Point3D> points;
+
+    if (pc3d_ && !pc3d_->empty()) {
+        points.reserve(pc3d_->numPoints());
+        for (int i = 0; i < pc3d_->numPoints(); ++i) {
+            float x, y, z;
+            pc3d_->getPoint(i, x, y, z);
+            points.push_back({static_cast<double>(x),
+                              static_cast<double>(y),
+                              static_cast<double>(z)});
+        }
+    } else if (geometry_ && !geometry_->empty()) {
+        const auto& verts = geometry_->vertices();
+        points.reserve(geometry_->numVertices());
+        for (int i = 0; i < geometry_->numVertices(); ++i) {
+            points.push_back({static_cast<double>(verts[i * 3]),
+                              static_cast<double>(verts[i * 3 + 1]),
+                              static_cast<double>(verts[i * 3 + 2])});
+        }
+    } else {
+        statusBar()->showMessage(QStringLiteral("No data — create/import a 3D point cloud or load a mesh first"), 5000);
+        return;
+    }
+
+    if (static_cast<int>(points.size()) < 4) {
+        statusBar()->showMessage(QStringLiteral("Need at least 4 points for 3D Delaunay tetrahedralization"), 5000);
+        return;
+    }
+
+    // Run Delaunay3D tetrahedralization
+    Delaunay3D delaunay(std::move(points), Delaunay3D::Strategy::Optimized);
+    auto tets = delaunay.tetrahedralize();
+
+    if (tets.empty()) {
+        statusBar()->showMessage(QStringLiteral("3D Delaunay tetrahedralization produced no tetrahedra"), 5000);
+        return;
+    }
+
+    // Convert to MeshData (extract surface triangles)
+    MeshData mesh;
+    read_3d_mesh(delaunay.points(), tets, mesh);
+
+    if (mesh.indices.empty()) {
+        statusBar()->showMessage(QStringLiteral("3D Delaunay: no surface triangles extracted"), 5000);
+        return;
+    }
+
+    renderer_->loadMesh(mesh);
+
+    statusBar()->showMessage(
+        QStringLiteral("3D Surface Delaunay: %1 points → %2 tets → %3 surface tris")
+            .arg(delaunay.points().size())
+            .arg(tets.size())
+            .arg(mesh.num_triangles()),
+        10000);
 }
 
 void MeshViewer::onDelaunay3DVolume()
 {
-    statusBar()->showMessage(QStringLiteral("Volume Delaunay Triangulation — not yet implemented"), 5000);
+    // Determine point source
+    std::vector<Point3D> points;
+
+    if (pc3d_ && !pc3d_->empty()) {
+        points.reserve(pc3d_->numPoints());
+        for (int i = 0; i < pc3d_->numPoints(); ++i) {
+            float x, y, z;
+            pc3d_->getPoint(i, x, y, z);
+            points.push_back({static_cast<double>(x),
+                              static_cast<double>(y),
+                              static_cast<double>(z)});
+        }
+    } else if (geometry_ && !geometry_->empty()) {
+        const auto& verts = geometry_->vertices();
+        points.reserve(geometry_->numVertices());
+        for (int i = 0; i < geometry_->numVertices(); ++i) {
+            points.push_back({static_cast<double>(verts[i * 3]),
+                              static_cast<double>(verts[i * 3 + 1]),
+                              static_cast<double>(verts[i * 3 + 2])});
+        }
+    } else {
+        statusBar()->showMessage(QStringLiteral("No data — create/import a 3D point cloud or load a mesh first"), 5000);
+        return;
+    }
+
+    if (static_cast<int>(points.size()) < 4) {
+        statusBar()->showMessage(QStringLiteral("Need at least 4 points for 3D Delaunay tetrahedralization"), 5000);
+        return;
+    }
+
+    // Run Delaunay3D tetrahedralization
+    Delaunay3D delaunay(std::move(points), Delaunay3D::Strategy::Optimized);
+    auto tets = delaunay.tetrahedralize();
+
+    if (tets.empty()) {
+        statusBar()->showMessage(QStringLiteral("3D Delaunay tetrahedralization produced no tetrahedra"), 5000);
+        return;
+    }
+
+    // Volume mode: render ALL tetrahedron faces (including interior)
+    MeshData mesh;
+    {
+        const auto& pts = delaunay.points();
+        mesh.vertices.reserve(pts.size() * 3);
+        for (const auto& p : pts) {
+            mesh.vertices.push_back(static_cast<float>(p.x));
+            mesh.vertices.push_back(static_cast<float>(p.y));
+            mesh.vertices.push_back(static_cast<float>(p.z));
+        }
+        mesh.indices.reserve(tets.size() * 12);  // 4 faces × 3 indices
+        for (const auto& tet : tets) {
+            // All 4 faces (interior faces will be depth-tested)
+            auto add_tri = [&](int a, int b, int c) {
+                mesh.indices.push_back(static_cast<unsigned int>(a));
+                mesh.indices.push_back(static_cast<unsigned int>(b));
+                mesh.indices.push_back(static_cast<unsigned int>(c));
+            };
+            add_tri(tet.v0, tet.v1, tet.v2);
+            add_tri(tet.v0, tet.v1, tet.v3);
+            add_tri(tet.v0, tet.v2, tet.v3);
+            add_tri(tet.v1, tet.v2, tet.v3);
+        }
+    }
+
+    renderer_->loadMesh(mesh);
+
+    statusBar()->showMessage(
+        QStringLiteral("3D Volume Delaunay: %1 points → %2 tets → %3 faces")
+            .arg(delaunay.points().size())
+            .arg(tets.size())
+            .arg(mesh.num_triangles()),
+        10000);
 }
 
 void MeshViewer::onDelaunay3DSurfaceOptimize()
 {
-    statusBar()->showMessage(QStringLiteral("Surface Delaunay Optimization — not yet implemented"), 5000);
+    // Same as surface, uses Delaunay3D::Strategy::Optimized (already default)
+    onDelaunay3DSurface();
+    statusBar()->showMessage(
+        QStringLiteral("3D Surface Delaunay (optimized) completed"),
+        5000);
 }
 
 void MeshViewer::onDelaunay3DVolumeOptimize()
 {
-    statusBar()->showMessage(QStringLiteral("Volume Delaunay Optimization — not yet implemented"), 5000);
+    // Same as volume, uses Delaunay3D::Strategy::Optimized (already default)
+    onDelaunay3DVolume();
+    statusBar()->showMessage(
+        QStringLiteral("3D Volume Delaunay (optimized) completed"),
+        5000);
 }

@@ -4,6 +4,8 @@
 #include <string>
 #include <vector>
 #include <cstdint>
+#include <map>
+#include <algorithm>
 
 // -----------------------------------------------------------------------
 // MeshReader — read STL, OBJ, and custom mesh formats into a common
@@ -90,7 +92,60 @@ void read_2d_mesh(const std::vector<Point2D>& pts,
 template<typename Point3D, typename Tetrahedron>
 void read_3d_mesh(const std::vector<Point3D>& pts,
                   const std::vector<Tetrahedron>& tets,
-                  MeshData& out);
+                  MeshData& out)
+{
+    out.clear();
+    if (pts.empty() || tets.empty()) return;
+
+    // Copy all points (3D)
+    out.vertices.reserve(pts.size() * 3);
+    for (const auto& p : pts) {
+        out.vertices.push_back(static_cast<float>(p.x));
+        out.vertices.push_back(static_cast<float>(p.y));
+        out.vertices.push_back(static_cast<float>(p.z));
+    }
+
+    // Count face occurrences using a sorted-key map
+    // Each face is a sorted triple (min, mid, max) of vertex indices
+    struct FaceKey {
+        int a, b, c;  // sorted: a < b < c
+        bool operator<(const FaceKey& o) const {
+            if (a != o.a) return a < o.a;
+            if (b != o.b) return b < o.b;
+            return c < o.c;
+        }
+    };
+    std::map<FaceKey, int> face_count;
+
+    // Helper to add a face
+    auto add_face = [&](int i0, int i1, int i2) {
+        int v[3] = {i0, i1, i2};
+        std::sort(v, v + 3);
+        face_count[{v[0], v[1], v[2]}]++;
+    };
+
+    for (const auto& tet : tets) {
+        int v0 = tet.v0, v1 = tet.v1, v2 = tet.v2, v3 = tet.v3;
+        // 4 faces of a tetrahedron
+        add_face(v0, v1, v2);
+        add_face(v0, v1, v3);
+        add_face(v0, v2, v3);
+        add_face(v1, v2, v3);
+    }
+
+    // Boundary faces are those that appear exactly once
+    // (interior faces appear twice — shared by 2 tetrahedra)
+    std::vector<unsigned int> tri_indices;
+    for (const auto& kv : face_count) {
+        if (kv.second == 1) {
+            tri_indices.push_back(static_cast<unsigned int>(kv.first.a));
+            tri_indices.push_back(static_cast<unsigned int>(kv.first.b));
+            tri_indices.push_back(static_cast<unsigned int>(kv.first.c));
+        }
+    }
+
+    out.indices = std::move(tri_indices);
+}
 
 /// Forward declaration for octree bridge.
 class Octree;

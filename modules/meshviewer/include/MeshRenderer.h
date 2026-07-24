@@ -53,6 +53,19 @@ public:
     /// Load a mesh for display.
     void loadMesh(const MeshData& mesh);
 
+    /// Load a 3D point cloud for display (interleaved x,y,z floats).
+    /// Clears any previously loaded point cloud.
+    void loadPointCloud(const std::vector<float>& points);
+
+    /// Clear the current point cloud.
+    void clearPointCloud();
+
+    /// Check if a point cloud is loaded.
+    bool hasPointCloud() const { return point_count_ > 0; }
+
+    /// Get point cloud info string.
+    QString pointCloudInfo() const;
+
     /// Clear the current mesh.
     void clearMesh();
 
@@ -161,6 +174,13 @@ private:
     std::vector<float> slice_contour_verts_;  // computed contour line vertices
     GLuint slice_vao_ = 0;
     GLuint slice_vbo_ = 0;
+
+    // Point cloud rendering
+    GLuint point_vao_ = 0;
+    GLuint point_vbo_ = 0;
+    int point_count_ = 0;
+    float point_cloud_diag_ = 1.0f;  // bounding diagonal for camera framing
+    QVector3D point_cloud_center_{0.0f, 0.0f, 0.0f};
 };
 
 #endif // MESHRENDERER_H

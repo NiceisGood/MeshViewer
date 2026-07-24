@@ -28,6 +28,8 @@ MeshRenderer::~MeshRenderer()
     if (quad_ebo_) glDeleteBuffers(1, &quad_ebo_);
     if (slice_vao_) glDeleteVertexArrays(1, &slice_vao_);
     if (slice_vbo_) glDeleteBuffers(1, &slice_vbo_);
+    if (point_vao_) glDeleteVertexArrays(1, &point_vao_);
+    if (point_vbo_) glDeleteBuffers(1, &point_vbo_);
     delete shader_;
     delete wire_shader_;
     doneCurrent();
@@ -88,6 +90,99 @@ void MeshRenderer::clearMesh()
     emit meshInfoChanged(meshInfo());
 }
 
+// =======================================================================
+//  Point cloud loading
+// =======================================================================
+
+void MeshRenderer::loadPointCloud(const std::vector<float>& points)
+{
+    point_count_ = 0;
+    point_cloud_diag_ = 1.0f;
+    point_cloud_center_ = QVector3D(0.0f, 0.0f, 0.0f);
+
+    if (points.empty() || points.size() < 3) {
+        if (initialized_) {
+            makeCurrent();
+            // Clear point buffer
+            glBindVertexArray(point_vao_);
+            glBindBuffer(GL_ARRAY_BUFFER, point_vbo_);
+            glBufferData(GL_ARRAY_BUFFER, 0, nullptr, GL_STATIC_DRAW);
+            glBindVertexArray(0);
+            doneCurrent();
+            update();
+        }
+        return;
+    }
+
+    point_count_ = static_cast<int>(points.size() / 3);
+
+    // Compute bounding box and center
+    float minX = points[0], maxX = points[0];
+    float minY = points[1], maxY = points[1];
+    float minZ = points[2], maxZ = points[2];
+    for (size_t i = 3; i < points.size(); i += 3) {
+        float x = points[i], y = points[i+1], z = points[i+2];
+        if (x < minX) minX = x; if (x > maxX) maxX = x;
+        if (y < minY) minY = y; if (y > maxY) maxY = y;
+        if (z < minZ) minZ = z; if (z > maxZ) maxZ = z;
+    }
+    float dx = maxX - minX, dy = maxY - minY, dz = maxZ - minZ;
+    point_cloud_diag_ = std::sqrt(dx*dx + dy*dy + dz*dz);
+    if (point_cloud_diag_ < 1e-6f) point_cloud_diag_ = 1.0f;
+    point_cloud_center_ = QVector3D((minX + maxX) * 0.5f,
+                                     (minY + maxY) * 0.5f,
+                                     (minZ + maxZ) * 0.5f);
+
+    if (initialized_) {
+        makeCurrent();
+
+        // Upload point data
+        glBindVertexArray(point_vao_);
+        glBindBuffer(GL_ARRAY_BUFFER, point_vbo_);
+        glBufferData(GL_ARRAY_BUFFER,
+                     points.size() * sizeof(float),
+                     points.data(), GL_STATIC_DRAW);
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), nullptr);
+        glEnableVertexAttribArray(0);
+        glBindVertexArray(0);
+
+        // Reset camera to frame the point cloud
+        zoom_ = 1.0f;
+        pan_x_ = pan_y_ = 0.0f;
+        rotation_quat_[0] = 1.0f;
+        rotation_quat_[1] = rotation_quat_[2] = rotation_quat_[3] = 0.0f;
+        center_ = point_cloud_center_;
+
+        // Update model_diag_ so near/far planes are correct
+        model_diag_ = point_cloud_diag_;
+        resizeGL(width(), height());
+
+        doneCurrent();
+        update();
+    }
+}
+
+void MeshRenderer::clearPointCloud()
+{
+    point_count_ = 0;
+    if (initialized_) {
+        makeCurrent();
+        glBindVertexArray(point_vao_);
+        glBindBuffer(GL_ARRAY_BUFFER, point_vbo_);
+        glBufferData(GL_ARRAY_BUFFER, 0, nullptr, GL_STATIC_DRAW);
+        glBindVertexArray(0);
+        doneCurrent();
+        update();
+    }
+}
+
+QString MeshRenderer::pointCloudInfo() const
+{
+    if (point_count_ <= 0)
+        return QStringLiteral("No point cloud");
+    return QStringLiteral("%1 points").arg(point_count_);
+}
+
 QString MeshRenderer::meshInfo() const
 {
     if (mesh_.empty())
@@ -125,6 +220,8 @@ void MeshRenderer::initializeGL()
     glGenBuffers(1, &quad_ebo_);
     glGenVertexArrays(1, &slice_vao_);
     glGenBuffers(1, &slice_vbo_);
+    glGenVertexArrays(1, &point_vao_);
+    glGenBuffers(1, &point_vbo_);
 
     if (!mesh_.empty())
         buildBuffers();
@@ -595,7 +692,7 @@ void MeshRenderer::paintGL()
 {
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-    if (mesh_.empty()) return;
+    if (mesh_.empty() && point_count_ == 0) return;
 
     // Build rotation matrix from quaternion
     QMatrix4x4 rot;
@@ -720,5 +817,22 @@ void MeshRenderer::paintGL()
             glBindVertexArray(0);
             wire_shader_->release();
         }
+    }
+
+    // ---- Point cloud overlay (rendered on top of everything) ----
+    if (point_count_ > 0) {
+        glEnable(GL_PROGRAM_POINT_SIZE);
+        glPointSize(4.0f);
+
+        shader_->bind();
+        shader_->setUniformValue("uMVP", mvp);
+        shader_->setUniformValue("uColor", QVector3D(0.2f, 0.9f, 1.0f));  // bright cyan
+
+        glBindVertexArray(point_vao_);
+        glDrawArrays(GL_POINTS, 0, point_count_);
+        glBindVertexArray(0);
+
+        shader_->release();
+        glDisable(GL_PROGRAM_POINT_SIZE);
     }
 }
