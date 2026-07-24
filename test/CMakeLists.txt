@@ -39,6 +39,10 @@ target_link_libraries(test_octree_from_stl PRIVATE octree meshutils)
 add_executable(test_stl_to_delaunay2d test_stl_to_delaunay2d.cpp)
 target_link_libraries(test_stl_to_delaunay2d PRIVATE delaunay2d)
 
+# Winding test: validate no overlapping edges across multiple random runs
+add_executable(test_delaunay_winding test_delaunay_winding.cpp)
+target_link_libraries(test_delaunay_winding PRIVATE delaunay2d geometry)
+
 # Test: 2D Delaunay optimization via Laplacian smoothing
 add_executable(test_delaunay2d_opt test_delaunay2d_opt.cpp)
 target_link_libraries(test_delaunay2d_opt PRIVATE delaunay2d meshutils)

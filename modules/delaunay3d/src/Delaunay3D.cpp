@@ -346,6 +346,19 @@ std::vector<Tetrahedron> Delaunay3D::tetrahedralize_optimized()
         t.v2 = perm[t.v2];
         t.v3 = perm[t.v3];
     }
+
+    // ---- 6. Restore pts_ to original order ----
+    // After Morton sort, pts_[0..n_orig-1] are in sorted order but
+    // tetrahedron indices have been remapped to original input index
+    // space.  Restore pts_ so pts_[i] = original point i.
+    {
+        std::vector<Point3D> orig_order(n_orig);
+        for (int i = 0; i < n_orig; ++i)
+            orig_order[perm[i]] = pts_[i];
+        for (int i = 0; i < n_orig; ++i)
+            pts_[i] = orig_order[i];
+        // Super-tetrahedron vertices at pts_[n_orig..n_orig+3] stay unchanged.
+    }
     return result;
 }
 

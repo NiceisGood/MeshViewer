@@ -292,6 +292,20 @@ std::vector<Triangle2D> Delaunay2D::triangulate_optimized()
             std::swap(t.v1, t.v2);
         t.v0 = perm[t.v0]; t.v1 = perm[t.v1]; t.v2 = perm[t.v2];
     }
+
+    // ---- 6. Restore pts_ to original order ----
+    // After Hilbert sort, pts_[0..n_orig-1] are in Hilbert order, but
+    // triangle indices have been remapped to the original input index
+    // space.  Restore pts_ so that pts_[i] = original point i, making
+    // the caller's vertex data match the triangle indices.
+    {
+        std::vector<Point2D> orig_order(n_orig);
+        for (int i = 0; i < n_orig; ++i)
+            orig_order[perm[i]] = pts_[i];
+        for (int i = 0; i < n_orig; ++i)
+            pts_[i] = orig_order[i];
+        // Super-triangle vertices at pts_[n_orig..n_orig+2] stay unchanged.
+    }
     return res;
 }
 
