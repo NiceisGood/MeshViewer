@@ -242,17 +242,16 @@ void DelaunayCanvas::drawVoronoi(QPainter& p)
     p.setPen(QPen(QColor(0, 150, 0), 1.0, Qt::DashLine));  // green dashed
 
     if (points_.size() == 2) {
-        // Perpendicular bisector of the segment
+        // Perpendicular bisector — drawn in screen space, which is correct
+        // because the bisector of two screen-space points is visually correct.
         QPointF a = toScreen(points_[0]);
         QPointF b = toScreen(points_[1]);
         QPointF mid = (a + b) / 2.0;
         double dx = b.x() - a.x();
         double dy = b.y() - a.y();
-        // Extend perpendicular bisector to canvas edges
         double len = std::max(width(), height()) * 2.0;
         if (std::abs(dx) < 1e-6f && std::abs(dy) < 1e-6f) return;
-        double nx = -dy;
-        double ny = dx;
+        double nx = -dy, ny = dx;
         double nl = std::sqrt(nx * nx + ny * ny);
         nx = nx / nl * len;
         ny = ny / nl * len;
@@ -263,11 +262,57 @@ void DelaunayCanvas::drawVoronoi(QPainter& p)
         return;
     }
 
-    // 3+ points: connect circumcenters of adjacent triangles
+    // 3+ points: Voronoi computed in algorithm space, then mapped to screen.
     if (triangles_.empty()) return;
 
-    // Build adjacency: for each edge (sorted vertex pair), store which
-    // triangles share it.
+    // ── Algorithm‑space helpers ──
+    auto circumcenter_algo = [](const Point2D& a, const Point2D& b,
+                                 const Point2D& c) -> QPointF {
+        double ax = a.x, ay = a.y;
+        double bx = b.x, by = b.y;
+        double cx = c.x, cy = c.y;
+        double d = 2.0 * (ax * (by - cy) + bx * (cy - ay) + cx * (ay - by));
+        if (std::abs(d) < 1e-12)
+            return QPointF(static_cast<float>((ax + bx + cx) / 3.0),
+                           static_cast<float>((ay + by + cy) / 3.0));
+        double a2 = ax * ax + ay * ay;
+        double b2 = bx * bx + by * by;
+        double c2 = cx * cx + cy * cy;
+        double ux = (a2 * (by - cy) + b2 * (cy - ay) + c2 * (ay - by)) / d;
+        double uy = (a2 * (cx - bx) + b2 * (ax - cx) + c2 * (bx - ax)) / d;
+        return QPointF(static_cast<float>(ux), static_cast<float>(uy));
+    };
+
+    auto algo_to_screen = [&](const QPointF& p_algo) -> QPointF {
+        double w = static_cast<double>(width());
+        double h = static_cast<double>(height());
+        double sx = (p_algo.x() + 1.0) * 0.5 * w;
+        double sy = (1.0 - p_algo.y()) * 0.5 * h;
+        return QPointF(static_cast<float>(sx), static_cast<float>(sy));
+    };
+
+    // Clip a ray from origin O in direction (dx, dy) to the algorithm‑space
+    // square [-1,1]×[-1,1].  Returns the intersection point, or O if none.
+    auto clip_ray = [&](const QPointF& O, double dx, double dy) -> QPointF {
+        const double ext = 2.0;  // well beyond [-1,1]
+        double ox = static_cast<double>(O.x());
+        double oy = static_cast<double>(O.y());
+        // Extend ray far enough
+        double t_max = ext / (std::abs(dx) + std::abs(dy) + 1e-12);
+        auto clip_axis = [&](double o, double d, double bound) {
+            if (std::abs(d) < 1e-12) return;
+            double t = (bound - o) / d;
+            if (t > 0 && t < t_max) t_max = t;
+        };
+        clip_axis(ox, dx, -1.0);
+        clip_axis(ox, dx,  1.0);
+        clip_axis(oy, dy, -1.0);
+        clip_axis(oy, dy,  1.0);
+        return QPointF(static_cast<float>(ox + dx * t_max),
+                       static_cast<float>(oy + dy * t_max));
+    };
+
+    // ── Build edge‑adjacency map (indices are algorithm‑space point indices) ──
     struct EdgeKey { int a, b; };
     auto make_key = [](int a, int b) {
         return EdgeKey{std::min(a, b), std::max(a, b)};
@@ -277,18 +322,16 @@ void DelaunayCanvas::drawVoronoi(QPainter& p)
         return x.b < y.b;
     };
 
-    // Collect all triangle circumcenters in screen space
+    // Circumcenters in algorithm space
     int nt = static_cast<int>(triangles_.size());
-    std::vector<QPointF> circs(nt);
+    std::vector<QPointF> circs_algo(nt);
     for (int i = 0; i < nt; ++i) {
         const auto& tri = triangles_[i];
-        QPointF a = toScreen(points_[tri.v0]);
-        QPointF b = toScreen(points_[tri.v1]);
-        QPointF c = toScreen(points_[tri.v2]);
-        circs[i] = circumcenter(a, b, c);
+        circs_algo[i] = circumcenter_algo(
+            points_[tri.v0], points_[tri.v1], points_[tri.v2]);
     }
 
-    // Build edge → triangle index map
+    // Edge → triangle map
     std::vector<std::pair<EdgeKey, int>> edge_tri;
     edge_tri.reserve(nt * 3);
     for (int i = 0; i < nt; ++i) {
@@ -302,9 +345,7 @@ void DelaunayCanvas::drawVoronoi(QPainter& p)
                   return edge_less(x.first, y.first);
               });
 
-    // For each edge:
-    //   count == 2 → interior edge, draw segment between the two circumcenters
-    //   count == 1 → boundary edge, draw ray from circumcenter to canvas boundary
+    // ── Draw Voronoi edges ──
     for (size_t i = 0; i < edge_tri.size();) {
         size_t j = i;
         while (j < edge_tri.size() &&
@@ -314,74 +355,51 @@ void DelaunayCanvas::drawVoronoi(QPainter& p)
         size_t count = j - i;
 
         if (count == 2) {
-            // Interior edge: connect the two adjacent circumcenters
+            // Interior edge: connect the two algorithm‑space circumcenters
             int t1 = edge_tri[i].second;
             int t2 = edge_tri[i + 1].second;
-            p.drawLine(circs[t1], circs[t2]);
+            p.drawLine(algo_to_screen(circs_algo[t1]),
+                       algo_to_screen(circs_algo[t2]));
         } else if (count == 1) {
-            // Boundary edge: extend ray from circumcenter outward to canvas boundary
-            int a = edge_tri[i].first.a;
-            int b = edge_tri[i].first.b;
+            // Boundary edge on convex hull: ray from circumcenter outward.
+            int a_idx = edge_tri[i].first.a;
+            int b_idx = edge_tri[i].first.b;
             int tri_idx = edge_tri[i].second;
             const auto& tri = triangles_[tri_idx];
 
-            // Find the third vertex (the one NOT in this edge)
-            int c = -1;
-            if (tri.v0 != a && tri.v0 != b) c = tri.v0;
-            else if (tri.v1 != a && tri.v1 != b) c = tri.v1;
-            else c = tri.v2;
+            // Third vertex not in this edge
+            int c_idx = -1;
+            if (tri.v0 != a_idx && tri.v0 != b_idx) c_idx = tri.v0;
+            else if (tri.v1 != a_idx && tri.v1 != b_idx) c_idx = tri.v1;
+            else c_idx = tri.v2;
 
-            QPointF pa = toScreen(points_[a]);
-            QPointF pb = toScreen(points_[b]);
-            QPointF pc = toScreen(points_[c]);
-            QPointF O = circs[tri_idx];               // circumcenter on the bisector
-            QPointF M = (pa + pb) / 2.0f;              // edge midpoint
+            const Point2D& A = points_[a_idx];
+            const Point2D& B = points_[b_idx];
+            const Point2D& C = points_[c_idx];
+            QPointF O = circs_algo[tri_idx];
 
-            // Edge direction and outward perpendicular
-            double dx = static_cast<double>(pb.x() - pa.x());
-            double dy = static_cast<double>(pb.y() - pa.y());
+            // Edge vector and perpendicular direction in algorithm space
+            double dx = B.x - A.x;
+            double dy = B.y - A.y;
             double len = std::sqrt(dx * dx + dy * dy);
-            if (len < 1.0) continue;
+            if (len < 1e-12) { i = j; continue; }
 
-            // Two perpendicular directions
-            double nx = -dy / len;
+            double nx = -dy / len;  // rotate_left(AB)
             double ny =  dx / len;
 
-            // Pick the direction that points AWAY from third vertex C
-            // (the inward direction has a component toward C)
-            double mx = static_cast<double>(pc.x() - M.x());
-            double my = static_cast<double>(pc.y() - M.y());
-            if (nx * mx + ny * my > 0.0) { nx = -nx; ny = -ny; }
-            // Now (nx, ny) points outward from the convex hull
+            // Determine which perpendicular direction points away from the
+            // triangle interior.  Compute vector from edge midpoint to C.
+            double Mx = (A.x + B.x) * 0.5;
+            double My = (A.y + B.y) * 0.5;
+            double mcx = C.x - Mx;
+            double mcy = C.y - My;
 
-            // Extend from O in the outward direction to the canvas boundary
-            double ox = static_cast<double>(O.x());
-            double oy = static_cast<double>(O.y());
-            double extent = std::max(width(), height()) * 2.0;
-            double ex = ox + nx * extent;
-            double ey = oy + ny * extent;
+            // If nx,ny has a component toward C, it's inward — flip it.
+            if (nx * mcx + ny * mcy > 0.0) { nx = -nx; ny = -ny; }
 
-            // Clip to canvas rectangle [0, w] x [0, h]
-            double w = static_cast<double>(width());
-            double h = static_cast<double>(height());
-            // Parametric line O + t * dir, t in [0, extent]
-            // Find t where x = 0, x = w, y = 0, or y = h
-            double t_max = extent;
-            auto clip_axis = [&](double origin, double dir, double bound) {
-                if (std::abs(dir) < 1e-12) return;
-                double t = (bound - origin) / dir;
-                if (t > 0 && t < t_max) t_max = t;
-            };
-            clip_axis(ox, nx, 0.0);
-            clip_axis(ox, nx, w);
-            clip_axis(oy, ny, 0.0);
-            clip_axis(oy, ny, h);
-
-            if (t_max > 0.0) {
-                QPointF end(static_cast<float>(ox + nx * t_max),
-                            static_cast<float>(oy + ny * t_max));
-                p.drawLine(O, end);
-            }
+            // Outward ray from O to algorithm-space boundary
+            QPointF end = clip_ray(O, nx, ny);
+            p.drawLine(algo_to_screen(O), algo_to_screen(end));
         }
         i = j;
     }
