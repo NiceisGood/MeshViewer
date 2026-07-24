@@ -378,27 +378,35 @@ void DelaunayCanvas::drawVoronoi(QPainter& p)
             const Point2D& C = points_[c_idx];
             QPointF O = circs_algo[tri_idx];
 
-            // Edge vector and perpendicular direction in algorithm space
+            // Edge vector AB in algorithm space
             double dx = B.x - A.x;
             double dy = B.y - A.y;
             double len = std::sqrt(dx * dx + dy * dy);
             if (len < 1e-12) { i = j; continue; }
 
-            double nx = -dy / len;  // rotate_left(AB)
-            double ny =  dx / len;
+            // Two perpendicular directions to AB
+            double nx_left  = -dy / len;  // rotate_left(AB)
+            double ny_left  =  dx / len;
+            double nx_right =  dy / len;  // rotate_right(AB) = −rotate_left
+            double ny_right = -dx / len;
 
-            // Determine which perpendicular direction points away from the
-            // triangle interior.  Compute vector from edge midpoint to C.
-            double Mx = (A.x + B.x) * 0.5;
-            double My = (A.y + B.y) * 0.5;
-            double mcx = C.x - Mx;
-            double mcy = C.y - My;
+            // Determine triangle orientation (CCW or CW) via 2D cross product.
+            // cross = (B-A) × (C-A)
+            double cross = dx * (C.y - A.y) - dy * (C.x - A.x);
 
-            // If nx,ny has a component toward C, it's inward — flip it.
-            if (nx * mcx + ny * mcy > 0.0) { nx = -nx; ny = -ny; }
+            // If cross > 0: A→B→C is CCW → interior is LEFT of A→B
+            //                → rotate_left points inward,  outward = rotate_right
+            // If cross < 0: A→B→C is CW  → interior is RIGHT of A→B
+            //                → rotate_right points inward, outward = rotate_left
+            double nx_out, ny_out;
+            if (cross > 0.0) {
+                nx_out = nx_right; ny_out = ny_right;  // CCW → outward = right
+            } else {
+                nx_out = nx_left;  ny_out = ny_left;   // CW  → outward = left
+            }
 
             // Outward ray from O to algorithm-space boundary
-            QPointF end = clip_ray(O, nx, ny);
+            QPointF end = clip_ray(O, nx_out, ny_out);
             p.drawLine(algo_to_screen(O), algo_to_screen(end));
         }
         i = j;
