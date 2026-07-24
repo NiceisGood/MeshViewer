@@ -8,6 +8,7 @@
 #include "PointCloud.h"
 #include "PointCloudUtils.h"
 #include "PointCloudDialog.h"
+#include "Delaunay2DShow.h"
 
 #include <QMenuBar>
 #include <QMenu>
@@ -260,6 +261,13 @@ void MeshViewer::createMenus()
     QAction* clear_act = view_menu->addAction(QStringLiteral("Clea&r All"));
     clear_act->setShortcut(QKeySequence(Qt::Key_Delete));
     connect(clear_act, &QAction::triggered, this, &MeshViewer::onClearAll);
+
+    // ── Test menu ──
+    QMenu* test_menu = menuBar()->addMenu(QStringLiteral("&Test"));
+
+    QAction* d2dshow_act = test_menu->addAction(QStringLiteral("&Delaunay2DShow"));
+    d2dshow_act->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_T));
+    connect(d2dshow_act, &QAction::triggered, this, &MeshViewer::onDelaunay2DShow);
 }
 
 void MeshViewer::createStatusBar()
@@ -1236,4 +1244,21 @@ void MeshViewer::onDelaunay3DVolumeOptimize()
     statusBar()->showMessage(
         QStringLiteral("3D Volume Delaunay (optimized) completed"),
         5000);
+}
+
+// =======================================================================
+//  Test menu slots
+// =======================================================================
+
+void MeshViewer::onDelaunay2DShow()
+{
+    if (!delaunay2dshow_window_) {
+        delaunay2dshow_window_ = new Delaunay2DShow;
+        delaunay2dshow_window_->setAttribute(Qt::WA_DeleteOnClose);
+        connect(delaunay2dshow_window_, &QObject::destroyed,
+                this, [this]() { delaunay2dshow_window_ = nullptr; });
+    }
+    delaunay2dshow_window_->raise();
+    delaunay2dshow_window_->activateWindow();
+    delaunay2dshow_window_->show();
 }

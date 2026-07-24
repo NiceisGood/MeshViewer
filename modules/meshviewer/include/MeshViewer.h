@@ -16,6 +16,7 @@ class Geometry;
 class PointCloud2D;
 class PointCloud3D;
 class PointCloudCreateDialog;
+class Delaunay2DShow;
 
 // -----------------------------------------------------------------------
 // MeshViewer — main window with menu bar, status bar, and OpenGL view.
@@ -74,6 +75,9 @@ private slots:
     // ── Clear slot ──
     void onClearAll();
 
+    // ── Test menu slots ──
+    void onDelaunay2DShow();
+
 private:
     void createMenus();
     void createStatusBar();
@@ -98,6 +102,7 @@ private:
     PointCloud2D* pc2d_ = nullptr;
     PointCloud3D* pc3d_ = nullptr;
     PointCloudCreateDialog* pc_dialog_ = nullptr;  // modeless dialog
+    Delaunay2DShow* delaunay2dshow_window_ = nullptr;  // Test window
 };
 
 #endif // MESHVIEWER_H

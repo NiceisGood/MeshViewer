@@ -37,6 +37,7 @@ target_link_libraries(meshviewer PRIVATE
     geometry
     delaunay2d
     delaunay3d
+    delaunay2dshow
 )
 
 # Place the executable alongside other test binaries
