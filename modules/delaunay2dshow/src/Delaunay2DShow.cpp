@@ -132,9 +132,7 @@ void Delaunay2DShow::buildUI()
     toolbar_row->addStretch(1);
     canvas_layout->addLayout(toolbar_row);
 
-    canvas_layout->addStretch(1);  // drawing area
-
-    // ── Bottom-left: point coordinate list ──
+    // ── Point coordinate list (below toolbar) ──
     point_log_ = new QTextEdit;
     point_log_->setReadOnly(true);
     point_log_->setFixedSize(280, 140);
@@ -142,7 +140,9 @@ void Delaunay2DShow::buildUI()
     point_log_->setStyleSheet(QStringLiteral(
         "QTextEdit { background: rgba(255,255,255,200); border: 1px solid #bbb;"
         "  border-radius: 4px; padding: 4px; font-size: 12px; }"));
-    canvas_layout->addWidget(point_log_, 0, Qt::AlignBottom | Qt::AlignLeft);
+    canvas_layout->addWidget(point_log_, 0, Qt::AlignLeft);
+
+    canvas_layout->addStretch(1);  // drawing area
 
     // ── Connections ──
     connect(canvas_, &DelaunayCanvas::pointsChanged,
