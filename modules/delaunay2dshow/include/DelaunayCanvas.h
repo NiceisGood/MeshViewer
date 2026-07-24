@@ -71,11 +71,6 @@ private:
     void drawCircumcircles(QPainter& p);
     void drawVoronoi(QPainter& p);
 
-    /// Compute the circumcenter of a triangle given three canvas-space points.
-    QPointF circumcenter(const QPointF& a, const QPointF& b, const QPointF& c) const;
-    double  circumradius(const QPointF& a, const QPointF& b,
-                         const QPointF& c) const;
-
     /// Map a Point2D (algorithm space) to canvas pixel coordinates.
     QPointF toScreen(const Point2D& pt) const;
 
