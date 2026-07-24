@@ -230,15 +230,37 @@ void DelaunayCanvas::drawCircumcircles(QPainter& p)
         return;
     }
 
-    // 3+ points: circumcircle of each triangle
+    // 3+ points: circumcircle of each triangle (compute in algorithm space)
     p.setBrush(QColor(220, 60, 40, 30));  // very faint red fill
     for (const auto& tri : triangles_) {
-        QPointF a = toScreen(points_[tri.v0]);
-        QPointF b = toScreen(points_[tri.v1]);
-        QPointF c = toScreen(points_[tri.v2]);
-        QPointF cc = circumcenter(a, b, c);
-        double r = circumradius(a, b, c);
-        p.drawEllipse(cc, static_cast<float>(r), static_cast<float>(r));
+        const Point2D& pa = points_[tri.v0];
+        const Point2D& pb = points_[tri.v1];
+        const Point2D& pc = points_[tri.v2];
+
+        // Algorithm-space circumcenter
+        double ax = pa.x, ay = pa.y;
+        double bx = pb.x, by = pb.y;
+        double cx = pc.x, cy = pc.y;
+        double d = 2.0 * (ax * (by - cy) + bx * (cy - ay) + cx * (ay - by));
+        if (std::abs(d) < 1e-12) continue;
+        double a2 = ax*ax + ay*ay;
+        double b2 = bx*bx + by*by;
+        double c2 = cx*cx + cy*cy;
+        double ux = (a2 * (by - cy) + b2 * (cy - ay) + c2 * (ay - by)) / d;
+        double uy = (a2 * (cx - bx) + b2 * (ax - cx) + c2 * (bx - ax)) / d;
+
+        // Map center to screen
+        double w  = static_cast<double>(width());
+        double h  = static_cast<double>(height());
+        double sx = (ux + 1.0) * 0.5 * w;
+        double sy = (1.0 - uy) * 0.5 * h;
+
+        // Radius in algorithm space → approximate screen radius
+        double ar = std::sqrt((ax - ux)*(ax - ux) + (ay - uy)*(ay - uy));
+        double sr = ar * (w + h) * 0.5;  // average scale factor
+
+        p.drawEllipse(QPointF(static_cast<float>(sx), static_cast<float>(sy)),
+                      static_cast<float>(sr), static_cast<float>(sr));
     }
 }
 
