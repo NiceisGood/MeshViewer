@@ -46,6 +46,10 @@ public:
     void setShowVoronoi(bool show) { show_voronoi_ = show; update(); }
     bool showVoronoi() const { return show_voronoi_; }
 
+    /// Enable/disable triangle mesh display.
+    void setShowTriangles(bool show) { show_triangles_ = show; update(); }
+    bool showTriangles() const { return show_triangles_; }
+
     /// Re-run triangulation.  Called automatically after addPoint/clearPoints.
     void retriangulate();
 
@@ -85,6 +89,7 @@ private:
     // Overlay flags
     bool show_circumcircles_ = false;
     bool show_voronoi_ = false;
+    bool show_triangles_ = true;
 };
 
 #endif // DELAUNAYCANVAS_H

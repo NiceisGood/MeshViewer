@@ -131,6 +131,17 @@ void DelaunayCanvas::drawPoints(QPainter& p)
 
 void DelaunayCanvas::drawTriangles(QPainter& p)
 {
+    if (!show_triangles_) {
+        // Still draw the segment for exactly 2 points
+        if (points_.size() == 2) {
+            QPointF a = toScreen(points_[0]);
+            QPointF b = toScreen(points_[1]);
+            p.setPen(QPen(QColor(60, 60, 60), 2.0));
+            p.drawLine(a, b);
+        }
+        return;
+    }
+
     // Draw edges for 1-2 points
     if (points_.size() == 2) {
         QPointF a = toScreen(points_[0]);

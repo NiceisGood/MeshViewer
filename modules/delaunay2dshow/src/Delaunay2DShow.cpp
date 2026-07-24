@@ -49,18 +49,61 @@ void Delaunay2DShow::buildUI()
     QVBoxLayout* canvas_layout = new QVBoxLayout(canvas_);
     canvas_layout->setContentsMargins(8, 8, 8, 8);
 
-    // ── Top row: Add Point tools (left) + checkboxes (right) ──
-    QHBoxLayout* top_row = new QHBoxLayout;
+    // ── Row 1: overlay checkboxes ──
+    QHBoxLayout* checks_row = new QHBoxLayout;
+    checks_row->setSpacing(6);
 
-    // Left: Add Point button + X/Y inputs (floating toolbar)
-    QPushButton* add_btn = new QPushButton(QStringLiteral("Add Point"));
-    add_btn->setToolTip(QStringLiteral("Add point at the specified coordinates"));
-    add_btn->setStyleSheet(QStringLiteral(
-        "QPushButton { background: rgba(255,255,255,220); border: 1px solid #999;"
-        "  border-radius: 4px; padding: 4px 12px; }"
-        "QPushButton:hover { background: rgba(220,235,255,240); }"));
+    auto make_checkbox = [](const QString& text) {
+        QCheckBox* cb = new QCheckBox(text);
+        cb->setStyleSheet(QStringLiteral(
+            "QCheckBox { background: rgba(255,255,255,200); border: 1px solid #bbb;"
+            "  border-radius: 3px; padding: 3px 8px; }"));
+        return cb;
+    };
+
+    triangles_check_ = make_checkbox(QStringLiteral("Triangles"));
+    triangles_check_->setChecked(true);
+    connect(triangles_check_, &QCheckBox::toggled,
+            [this](bool checked) { canvas_->setShowTriangles(checked); });
+    checks_row->addWidget(triangles_check_);
+
+    circumcircle_check_ = make_checkbox(QStringLiteral("Circumcircles"));
+    connect(circumcircle_check_, &QCheckBox::toggled,
+            [this](bool checked) { canvas_->setShowCircumcircles(checked); });
+    checks_row->addWidget(circumcircle_check_);
+
+    voronoi_check_ = make_checkbox(QStringLiteral("Voronoi Diagram"));
+    connect(voronoi_check_, &QCheckBox::toggled,
+            [this](bool checked) { canvas_->setShowVoronoi(checked); });
+    checks_row->addWidget(voronoi_check_);
+
+    checks_row->addStretch(1);
+    canvas_layout->addLayout(checks_row);
+
+    // ── Row 2: toolbar — Clear + Add Point + X/Y inputs ──
+    QHBoxLayout* toolbar_row = new QHBoxLayout;
+
+    auto make_tool_btn = [](const QString& text, const QString& tip) {
+        QPushButton* btn = new QPushButton(text);
+        btn->setToolTip(tip);
+        btn->setStyleSheet(QStringLiteral(
+            "QPushButton { background: rgba(255,255,255,220); border: 1px solid #999;"
+            "  border-radius: 4px; padding: 4px 12px; }"
+            "QPushButton:hover { background: rgba(220,235,255,240); }"));
+        return btn;
+    };
+
+    QPushButton* clear_btn = make_tool_btn(QStringLiteral("Clear"),
+        QStringLiteral("Clear all points and reset"));
+    connect(clear_btn, &QPushButton::clicked, [this]() {
+        canvas_->clearPoints();
+    });
+    toolbar_row->addWidget(clear_btn);
+
+    QPushButton* add_btn = make_tool_btn(QStringLiteral("Add Point"),
+        QStringLiteral("Add point at the specified coordinates"));
     connect(add_btn, &QPushButton::clicked, this, &Delaunay2DShow::onAddPoint);
-    top_row->addWidget(add_btn);
+    toolbar_row->addWidget(add_btn);
 
     auto make_input = [](QLineEdit*& input, const QString& placeholder) {
         input = new QLineEdit;
@@ -74,45 +117,24 @@ void Delaunay2DShow::buildUI()
 
     QLabel* x_label = new QLabel(QStringLiteral(" X:"));
     x_label->setStyleSheet(QStringLiteral("background: transparent; font-weight: bold;"));
-    top_row->addWidget(x_label);
+    toolbar_row->addWidget(x_label);
 
     make_input(x_input_, QStringLiteral("0.0"));
-    top_row->addWidget(x_input_);
+    toolbar_row->addWidget(x_input_);
 
     QLabel* y_label = new QLabel(QStringLiteral(" Y:"));
     y_label->setStyleSheet(QStringLiteral("background: transparent; font-weight: bold;"));
-    top_row->addWidget(y_label);
+    toolbar_row->addWidget(y_label);
 
     make_input(y_input_, QStringLiteral("0.0"));
-    top_row->addWidget(y_input_);
+    toolbar_row->addWidget(y_input_);
 
-    top_row->addStretch(1);
+    toolbar_row->addStretch(1);
+    canvas_layout->addLayout(toolbar_row);
 
-    // Right: overlay checkboxes
-    circumcircle_check_ = new QCheckBox(QStringLiteral("Circumcircles"));
-    circumcircle_check_->setStyleSheet(QStringLiteral(
-        "QCheckBox { background: rgba(255,255,255,200); border: 1px solid #bbb;"
-        "  border-radius: 3px; padding: 3px 8px; }"));
-    connect(circumcircle_check_, &QCheckBox::toggled,
-            [this](bool checked) { canvas_->setShowCircumcircles(checked); });
-
-    voronoi_check_ = new QCheckBox(QStringLiteral("Voronoi Diagram"));
-    voronoi_check_->setStyleSheet(QStringLiteral(
-        "QCheckBox { background: rgba(255,255,255,200); border: 1px solid #bbb;"
-        "  border-radius: 3px; padding: 3px 8px; }"));
-    connect(voronoi_check_, &QCheckBox::toggled,
-            [this](bool checked) { canvas_->setShowVoronoi(checked); });
-
-    QVBoxLayout* checks = new QVBoxLayout;
-    checks->setSpacing(4);
-    checks->addWidget(circumcircle_check_);
-    checks->addWidget(voronoi_check_);
-    top_row->addLayout(checks);
-
-    canvas_layout->addLayout(top_row);
     canvas_layout->addStretch(1);  // drawing area
 
-    // ── Bottom-left: point coordinate list (floating, moderate size) ──
+    // ── Bottom-left: point coordinate list ──
     point_log_ = new QTextEdit;
     point_log_->setReadOnly(true);
     point_log_->setFixedSize(280, 140);

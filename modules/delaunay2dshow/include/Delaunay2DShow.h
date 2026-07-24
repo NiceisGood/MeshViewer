@@ -53,6 +53,7 @@ private:
     QTextEdit* point_log_ = nullptr;
 
     // Overlay checkboxes
+    QCheckBox* triangles_check_ = nullptr;
     QCheckBox* circumcircle_check_ = nullptr;
     QCheckBox* voronoi_check_ = nullptr;
 
